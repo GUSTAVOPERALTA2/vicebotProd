@@ -83,9 +83,9 @@ function checkPendingIncidences(client, initialRun = false) {
         const fechaFormateada = formatDate(row.fechaCreacion);
         const msg = `\n` +
                     `*RECORDATORIO: TAREA INCOMPLETA*\n\n` +
-                    `▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n` +
+                    `🔹🔹🔹🔹🔹🔹🔹🔹🔹🔹🔹🔹\n\n` +
                     `${row.descripcion}\n\n` +
-                    `▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n` +
+                    `🔹🔹🔹🔹🔹🔹🔹🔹🔹🔹🔹🔹\n\n` +
                     `📅 *Creación:* ${fechaFormateada}\n` +
                     `⌛ *Tiempo sin respuesta:* ${tiempoSinRespuesta}\n\n` +
                     `🤖 *Si la tarea ya se completo. Marca "Listo" por favor.* \n\n` +

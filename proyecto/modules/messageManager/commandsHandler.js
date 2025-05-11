@@ -7,6 +7,7 @@ const path = require('path');
 const incidenceDB = require('../incidenceManager/incidenceDB');
 const { exportXLSX } = require('../../config/exportXLSX');
 const { registerUser, getUser, loadUsers, saveUsers } = require('../../config/userManager');
+const { formatDate } = require('../../config/dateUtils');
 
 async function handleCommands(client, message) {
   const chat = await message.getChat();
@@ -350,24 +351,26 @@ async function handleCommands(client, message) {
       !normalizedBody.startsWith('/tareascompletadas')) {
     const parts = body.split(' ');
     if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. Uso: /tareas <categoria> (it, ama, man)");
+      await chat.sendMessage("Formato inválido. *Uso: /tareas <categoria> (it, ama, man)*");
       return true;
     }
     const categoria = parts[1].toLowerCase();
     if (!['it', 'ama', 'man'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. Usa: it, ama o man.");
+      await chat.sendMessage("Categoría inválida. *Usa: it, ama o man.*");
       return true;
     }
     incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
       if (err) {
         chat.sendMessage("Error al consultar las incidencias.");
       } else {
-        let summary = `Incidencias para la categoría *${categoria.toUpperCase()}*:\n\n`;
+        let summary = `*Incidencias para la categoría ${categoria.toUpperCase()}*:\n\n`;
         if (!rows.length) {
           summary += "No hay incidencias registradas en esta categoría.";
         } else {
           rows.forEach(row => {
-            summary += `ID: ${row.id} | Estado: ${row.estado} | Descripción: ${row.descripcion}\n`;
+            summary += 
+            `\n🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻\n\n`+
+            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
           });
         }
         chat.sendMessage(summary);
@@ -388,12 +391,14 @@ async function handleCommands(client, message) {
       if (err) {
         chat.sendMessage("Error al consultar incidencias por fecha.");
       } else {
-        let summary = `Incidencias del *${date}*:\n\n`;
+        let summary = `*Incidencias del ${date}*:\n\n`;
         if (!rows.length) {
           summary += "No hay incidencias registradas para esa fecha.";
         } else {
           rows.forEach(row => {
-            summary += `ID: ${row.id} | Estado: ${row.estado} | Descripción: ${row.descripcion}\n`;
+            summary += 
+            `\n🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺\n\n`+
+            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
           });
         }
         chat.sendMessage(summary);
@@ -417,12 +422,14 @@ async function handleCommands(client, message) {
       if (err) {
         chat.sendMessage("Error al consultar incidencias por rango.");
       } else {
-        let summary = `Incidencias entre ${parts[1]} y ${parts[2]}:\n\n`;
+        let summary = `*Incidencias entre ${parts[1]} y ${parts[2]}:*\n\n`;
         if (!rows.length) {
           summary += "No hay incidencias registradas en ese rango.";
         } else {
           rows.forEach(row => {
-            summary += `ID: ${row.id} | Estado: ${row.estado} | Descripción: ${row.descripcion}\n`;
+            summary += 
+            `\n▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️\n\n`+
+            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n`;
           });
         }
         chat.sendMessage(summary);
@@ -453,7 +460,9 @@ async function handleCommands(client, message) {
           summary += "No hay incidencias pendientes en esta categoría.";
         } else {
           pendingRows.forEach(row => {
-            summary += `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
+            summary += 
+            `\n▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n`+
+            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
           });
         }
         chat.sendMessage(summary);
@@ -484,7 +493,9 @@ async function handleCommands(client, message) {
           summary += "No hay incidencias completadas en esta categoría.";
         } else {
           compRows.forEach(row => {
-            summary += `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
+            summary += 
+            `\n▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n`+
+            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
           });
         }
         chat.sendMessage(summary);
@@ -512,7 +523,7 @@ async function handleCommands(client, message) {
         if (incidencia.reportadoPor !== senderId && (!currentUser || currentUser.rol !== 'admin')) {
           chat.sendMessage("No tienes permisos para cancelar esta incidencia.");
         } else if (incidencia.estado !== "pendiente") {
-          chat.sendMessage("La incidencia no se puede cancelar porque no está en estado pendiente.");
+          chat.sendMessage("*La incidencia no se puede cancelar porque no está en estado pendiente.*");
         } else {
           // Procedemos a cancelar la incidencia
           incidenceDB.cancelarIncidencia(incId, (err) => {
@@ -550,19 +561,19 @@ async function handleCommands(client, message) {
       } else if (!row) {
         await chat.sendMessage(`No se encontró ninguna incidencia con ID ${incId}.`);
       } else {
-        let detailMessage = `*Detalles de la incidencia (ID: ${row.id}):*\n\n`;
-        detailMessage += `*Descripción:*\n ${row.descripcion}\n`;
+        let detailMessage = `*DETALLES DE LA INCIDENCIA (ID: ${row.id}):*\n\n\n`;
+        detailMessage += `🖼️ *Descripción:*\n ${row.descripcion}\n\n`;
         const user = getUser(row.reportadoPor);
         if (user) {
-          detailMessage += `*Reportado por:*\n ${user.nombre} (${user.cargo}, rol: ${user.rol})\n`;
+          detailMessage += `🕵️ *Reportado por:*\n ${user.nombre} (${user.cargo}, rol: ${user.rol})\n\n`;
         } else {
-          detailMessage += `*Reportado por:*\n ${row.reportadoPor}\n`;
+          detailMessage += `🕵️ *Reportado por:*\n ${row.reportadoPor}\n\n`;
         }
-        detailMessage += `*Fecha de Creación:*\n ${row.fechaCreacion}\n`;
-        detailMessage += `*Estado:*\n ${row.estado}\n`;
-        detailMessage += `*Categoría:*\n ${row.categoria}\n`;
-        detailMessage += `*Grupo de Origen:*\n ${row.grupoOrigen}\n`;
-        detailMessage += row.media ? "*Media:*\n [Adjunta]" : "*Media:*\n No hay";
+        detailMessage += `📅 *Fecha de Creación:*\n ${formatDate(row.fechaCreacion)}\n\n`;
+        detailMessage += `🔷 *Estado:*\n ${row.estado}\n\n`;
+        detailMessage += `👷‍♀️ *Categoría:*\n ${row.categoria}\n\n`;
+        detailMessage += `🆎 *Grupo de Origen:*\n ${row.grupoOrigen}\n\n`;
+        detailMessage += row.media ? "🎞️ *Media:*\n [Adjunta]" : "*Media:*\n No hay";
       
         // Si la incidencia tiene múltiples categorías, agregar sección de comentarios
         const categorias = row.categoria.split(',').map(c => c.trim().toLowerCase());
@@ -583,7 +594,7 @@ async function handleCommands(client, message) {
           } else {
             comentarios = "Sin comentarios";
           }
-          detailMessage += `\n*Comentarios:*\n${comentarios}`;
+          detailMessage += `\n*Comentarios:*\n\n${comentarios}`;
         }
         await chat.sendMessage(detailMessage);
         if (row.media) {

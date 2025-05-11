@@ -2,6 +2,7 @@ const config = require('../../config/config');
 const incidenceDB = require('./incidenceDB');
 const moment = require('moment-timezone');
 const { normalizeText, adaptiveSimilarityCheck } = require('../../config/stringUtils');
+const { formatDate } = require('../../config/dateUtils');
 
 /**
  * processConfirmation - Procesa un mensaje de confirmación recibido en los grupos destino.
@@ -246,7 +247,6 @@ async function enviarConfirmacionGlobal(client, incidencia, incidenciaId, catego
   }
   
   const creationTime = moment(incidencia.fechaCreacion);
-  const formattedCreation = creationTime.format("DD/MM/YYYY hh:mm a");
   const confirmationTime = moment();
   const formattedConfirmation = confirmationTime.format("DD/MM/YYYY hh:mm a");
   const diffDurationGlobal = moment.duration(confirmationTime.diff(creationTime));
@@ -258,7 +258,7 @@ async function enviarConfirmacionGlobal(client, incidencia, incidenciaId, catego
     `*Tarea de ${equiposInvolucrados}*:\n\n` +
     `${incidencia.descripcion}\n\n` +
     `*ha sido COMPLETADA*\n\n` +
-    `*📅Creación:* ${incidencia.fechaCreacion}\n` +
+    `*📅Creación:* ${formatDate(incidencia.fechaCreacion)}\n` +
     `*📅Conclusión:* ${formattedConfirmation}\n\n` +
     `*⏱️Tiempo total:* \n ${diffStrGlobal}\n` +
     `${cronometros} \n` +

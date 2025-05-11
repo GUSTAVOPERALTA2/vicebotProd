@@ -10,7 +10,7 @@ const moment = require('moment-timezone');
  */
 function formatDate(date) {
   if (!date) return '';
-  return moment(date).tz("America/Hermosillo").format("DD/MM/YYYY HH:mm:ss");
+  return moment(date).tz("America/Hermosillo").format("DD/MM/YYYY hh:mm a");
 }
 
 module.exports = { formatDate };

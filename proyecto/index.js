@@ -9,7 +9,7 @@ const { setupEditHandler } = require('./modules/messageManager/editHandler');
 incidenciasDB.initDB();
 // Creamos el cliente de WhatsApp con autenticación local
 const client = new Client({
-  authStrategy: new LocalAuth()
+  authStrategy: new LocalAuth({ clientId : "dev"})
 });
 
 // Cargamos las keywords y las asignamos al cliente
