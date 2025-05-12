@@ -1,157 +1,183 @@
 // config/exportXLSX.js
+
 const sqlite3 = require('sqlite3').verbose();
 const ExcelJS = require('exceljs');
 const fs = require('fs');
 const path = require('path');
-const { formatDate } = require('./dateUtils');  // Importa el formateador
+const moment = require('moment-timezone');
+const { formatDate } = require('./dateUtils');
+const { getUser } = require('./userManager');
 
 /**
- * exportXLSX - Exporta las incidencias de la BD a un archivo XLSX.
- * Genera dos hojas:
- *   • "Incidencias": Datos principales de cada incidencia.
- *   • "Feedback": Cada registro de feedback (desnormalizado) en filas separadas, asociado a la incidencia.
- * Se omiten campos no relevantes (uniqueMessageId, originalMsgId, grupoOrigen, media).
- *
- * @returns {Promise<string>} - Promesa que se resuelve con la ruta del archivo XLSX generado.
+ * exportXLSX - Exporta las incidencias a un XLSX con logo, encabezados estilizados
+ * y configuración de impresión para un formato óptimo.
  */
-function exportXLSX() {
-  return new Promise((resolve, reject) => {
-    // Ruta a la base de datos (desde /config, subimos a /data)
-    const dbPath = path.join(__dirname, '../data/incidencias.db');
-    const db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error("Error al abrir la BD:", err);
-        return reject(err);
-      }
-      console.log("Base de datos abierta correctamente.");
+async function exportXLSX() {
+  // Conectar a la base de datos
+  const dbPath = path.join(__dirname, '../data/incidencias.db');
+  const db = new sqlite3.Database(dbPath);
+  const rows = await new Promise((resolve, reject) => db.all(
+    `SELECT id, descripcion, reportadoPor, fechaCreacion, estado,
+            categoria, confirmaciones, feedbackHistory, fechaCancelacion
+     FROM incidencias`,
+    (err, data) => err ? reject(err) : resolve(data)
+  ));
+  db.close();
+
+  if (!rows.length) throw new Error('No hay incidencias');
+
+  const workbook = new ExcelJS.Workbook();
+  const today = moment().tz('America/Hermosillo').format('DD/MM/YYYY');
+
+  // ================= Hoja Incidencias =================
+  const incSheet = workbook.addWorksheet('Incidencias');
+
+  // Definir anchos de columnas
+  incSheet.columns = [
+    { key: 'id', width: 10 },
+    { key: 'descripcion', width: 40 },
+    { key: 'reportadoPor', width: 30 },
+    { key: 'fechaCreacion', width: 20 },
+    { key: 'estado', width: 15 },
+    { key: 'categoria', width: 15 },
+    { key: 'confirmaciones', width: 30 },
+    { key: 'fechaCancelacion', width: 20 }
+  ];
+
+  // Configuración de impresión
+  incSheet.pageSetup = {
+    orientation: 'landscape',     // Horizontal
+    fitToPage: true,
+    fitToWidth: 1,               // Ajustar a 1 página de ancho
+    fitToHeight: 0,              // Altura ilimitada
+    margins: {
+      left: 0.5, right: 0.5,
+      top: 0.75, bottom: 0.75,
+      header: 0.3, footer: 0.3
+    },
+    printTitlesRow: '2:2',       // Repetir fila 2 en cada página
+    horizontalCentered: true
+  };
+
+  // Altura de fila 1 = 120px (~90pt)
+  incSheet.getRow(1).height = 90;
+
+  // Insertar logo en A1 (fila 1 altura) ocupando A1:B1
+  const logoPath = path.join(__dirname, '../data/logo.png');
+  if (fs.existsSync(logoPath)) {
+    const logoId = workbook.addImage({ filename: logoPath, extension: 'png' });
+    incSheet.addImage(logoId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 } });
+  }
+
+  // Encabezado principal: C1 hasta H1
+  const lastCol = incSheet.columns.length;
+  incSheet.mergeCells(1, 3, 1, lastCol);
+  const hdr = incSheet.getCell('C1');
+  hdr.value = `REPORTE DE INCIDENCIAS ${today}`;
+  hdr.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  hdr.alignment = { horizontal: 'center', vertical: 'middle' };
+  hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC7722' } };
+
+  // Congelar encabezados
+  incSheet.views = [{ state: 'frozen', ySplit: 2 }];
+
+  // Fila 2: encabezados de columnas (desde A)
+  incSheet.getRow(2).values = [
+    'ID', 'Descripción', 'Reportado Por', 'Fecha Creación',
+    'Estado', 'Categoría', 'Confirmaciones', 'Fecha Cancelación'
+  ];
+  incSheet.getRow(2).font = { bold: true };
+
+  // ================= Hoja Feedback =================
+  const fbSheet = workbook.addWorksheet('Feedback');
+
+  fbSheet.columns = [
+    { key: 'incidenciaId', width: 10 },
+    { key: 'equipo', width: 15 },
+    { key: 'comentario', width: 50 },
+    { key: 'fecha', width: 20 }
+  ];
+
+  // Impresión feedback
+  fbSheet.pageSetup = {
+    orientation: 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 },
+    printTitlesRow: '2:2',
+    horizontalCentered: true
+  };
+
+  fbSheet.getRow(1).height = 90;
+
+  // Logo en feedback A1:B1
+  if (fs.existsSync(logoPath)) {
+    const fbLogo = workbook.addImage({ filename: logoPath, extension: 'png' });
+    fbSheet.addImage(fbLogo, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 } });
+  }
+
+  // Encabezado principal: C1 hasta última col
+  const lastFb = fbSheet.columns.length;
+  fbSheet.mergeCells(1, 3, 1, lastFb);
+  const fbHdr = fbSheet.getCell('C1');
+  fbHdr.value = `FEEDBACK DE INCIDENCIAS ${today}`;
+  fbHdr.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  fbHdr.alignment = { horizontal: 'center', vertical: 'middle' };
+  fbHdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC7722' } };
+
+  fbSheet.views = [{ state: 'frozen', ySplit: 2 }];
+  fbSheet.getRow(2).values = ['Incidencia ID', 'Equipo', 'Comentario', 'Fecha'];
+  fbSheet.getRow(2).font = { bold: true };
+
+  // Poblado de datos
+  rows.forEach(r => {
+    const user = getUser(r.reportadoPor);
+    const reportedBy = user ? `${user.nombre} (${user.cargo})` : r.reportadoPor;
+    const estado = r.estado.charAt(0).toUpperCase() + r.estado.slice(1);
+    const categoria = r.categoria.toUpperCase();
+    let confText = '';
+    if (r.confirmaciones) {
+      try {
+        confText = Object.entries(JSON.parse(r.confirmaciones))
+          .map(([team, ts]) => `${team.toUpperCase()}: ${formatDate(ts)}`)
+          .join('\n');
+      } catch {}
+    }
+    incSheet.addRow({
+      id: r.id,
+      descripcion: r.descripcion,
+      reportadoPor: reportedBy,
+      fechaCreacion: formatDate(r.fechaCreacion),
+      estado,
+      categoria,
+      confirmaciones: confText,
+      fechaCancelacion: r.fechaCancelacion ? formatDate(r.fechaCancelacion) : ''
     });
-
-    // Consulta: Seleccionamos solo las col
-    //Columnas relevantes
-    const sql = `
-      SELECT id, descripcion, reportadoPor, fechaCreacion, estado, categoria, confirmaciones, feedbackHistory, fechaCancelacion
-      FROM incidencias
-    `;
-    db.all(sql, async (err, rows) => {
-      if (err) {
-        console.error("Error al leer la BD:", err);
-        db.close();
-        return reject(err);
-      }
-      if (!rows || rows.length === 0) {
-        console.log("No se encontraron incidencias.");
-        db.close();
-        return reject(new Error("No hay incidencias"));
-      }
-
-      // Crear el workbook
-      const workbook = new ExcelJS.Workbook();
-
-      // Hoja "Incidencias": datos principales
-      const incidenciasSheet = workbook.addWorksheet('Incidencias');
-      incidenciasSheet.columns = [
-        { header: 'ID', key: 'id', width: 10 },
-        { header: 'Descripción', key: 'descripcion', width: 40 },
-        { header: 'Reportado Por', key: 'reportadoPor', width: 20 },
-        { header: 'Fecha Creación', key: 'fechaCreacion', width: 20 },
-        { header: 'Estado', key: 'estado', width: 15 },
-        { header: 'Categoría', key: 'categoria', width: 20 },
-        { header: 'Confirmaciones', key: 'confirmaciones', width: 30 },
-        { header: 'Fecha Cancelación', key: 'fechaCancelacion', width: 20 }
-      ];
-
-      // Hoja "Feedback": desnormalización de feedbackHistory
-      const feedbackSheet = workbook.addWorksheet('Feedback');
-      feedbackSheet.columns = [
-        { header: 'Incidencia ID', key: 'incidenciaId', width: 10 },
-        { header: 'Equipo', key: 'equipo', width: 10 },
-        { header: 'Comentario', key: 'comentario', width: 40 },
-        { header: 'Fecha', key: 'fecha', width: 20 }
-      ];
-
-      // Procesar cada incidencia
-      rows.forEach(row => {
-        // Formatear confirmaciones: parseamos y separamos con salto de línea
-        let confirmacionesFormatted = "";
-        if (row.confirmaciones) {
-          try {
-            const conf = JSON.parse(row.confirmaciones);
-            if (conf && typeof conf === 'object') {
-              confirmacionesFormatted = Object.entries(conf)
-                .map(([key, val]) => {
-                  let formattedVal = val;
-                  if (val && !isNaN(Date.parse(val))) {
-                    formattedVal = new Date(val).toLocaleString();
-                  }
-                  return `${key.toUpperCase()}: ${formattedVal}`;
-                })
-                .join("\n");
-            } else {
-              confirmacionesFormatted = row.confirmaciones;
-            }
-          } catch (e) {
-            confirmacionesFormatted = row.confirmaciones;
-          }
-        }
-
-        // Agregar la incidencia a la hoja "Incidencias"
-        incidenciasSheet.addRow({
-          id: row.id,
-          descripcion: row.descripcion,
-          reportadoPor: row.reportadoPor,
-          fechaCreacion: formatDate(row.fechaCreacion),
-          estado: row.estado,
-          categoria: row.categoria,
-          confirmaciones: confirmacionesFormatted,
-          fechaCancelacion: formatDate(row.fechaCancelacion)
+    if (r.feedbackHistory) {
+      try {
+        JSON.parse(r.feedbackHistory).forEach(fb => {
+          fbSheet.addRow({
+            incidenciaId: r.id,
+            equipo: (fb.equipo || '').toUpperCase(),
+            comentario: fb.comentario || '',
+            fecha: formatDate(fb.fecha)
+          });
         });
-
-        // Desnormalizar el feedback: cada registro en una fila de "Feedback"
-        if (row.feedbackHistory) {
-          try {
-            const feedbackArray = JSON.parse(row.feedbackHistory);
-            if (Array.isArray(feedbackArray)) {
-              feedbackArray.forEach(fb => {
-                feedbackSheet.addRow({
-                  incidenciaId: row.id,
-                  equipo: fb.equipo || '',
-                  comentario: fb.comentario || '',
-                  fecha: fb.fecha || ''
-                });
-              });
-            }
-          } catch (e) {
-            console.error(`Error parseando feedbackHistory para incidencia ${row.id}:`, e);
-          }
-        }
-      });
-
-      // Dar formato a los encabezados (opcional: negrita)
-      [incidenciasSheet, feedbackSheet].forEach(sheet => {
-        sheet.getRow(1).font = { bold: true };
-      });
-
-      // Ruta de salida para el XLSX
-      const outputPath = path.join(__dirname, '../data/incidencias_export.xlsx');
-      workbook.xlsx.writeFile(outputPath)
-        .then(() => {
-          console.log("Archivo XLSX generado en:", outputPath);
-          db.close();
-          resolve(outputPath);
-        })
-        .catch(err => {
-          console.error("Error al escribir XLSX:", err);
-          db.close();
-          reject(err);
-        });
-    });
+      } catch {}
+    }
   });
+
+  // Guardar archivo
+  const outputPath = path.join(__dirname, '../data/incidencias_export.xlsx');
+  await workbook.xlsx.writeFile(outputPath);
+  return outputPath;
 }
 
 module.exports = { exportXLSX };
 
 if (require.main === module) {
   exportXLSX()
-    .then(outputPath => console.log("Reporte XLSX generado en:", outputPath))
-    .catch(err => console.error("Error:", err));
+    .then(p => console.log('Reporte generado en:', p))
+    .catch(console.error);
 }
