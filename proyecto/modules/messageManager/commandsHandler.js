@@ -4,6 +4,7 @@ const { addEntry, removeEntry, editEntry, loadKeywords } = require('../../config
 const WhatsappWeb = require('whatsapp-web.js'); // Importamos el módulo completo
 const fs = require('fs');
 const path = require('path');
+const moment = require('moment-timezone');
 const incidenceDB = require('../incidenceManager/incidenceDB');
 const { exportXLSX } = require('../../config/exportXLSX');
 const { registerUser, getUser, loadUsers, saveUsers } = require('../../config/userManager');
@@ -22,16 +23,26 @@ async function handleCommands(client, message) {
   // Comando para usuarios: /ayuda (excluyendo /helpAdmin)
   if (normalizedBody.startsWith('/ayuda') && !normalizedBody.startsWith('/helpadmin')) {
     const helpMessage =
-      "*COMANDOS USUARIOS* \n\n" +
-      "*/id* \n Muestra tu ID.\n\n" +
-      "*/ayuda* \n Muestra esta lista de comandos.\n\n" +
-      "*/tareas <categoria>* \n Consulta incidencias de la categoría (it, ama, man).\n\n" +
-      "*/tareasFecha <YYYY-MM-DD>* \n Consulta incidencias de una fecha específica.\n\n" +
-      "*/tareasRango <fechaInicio> <fechaFin>* \n Consulta incidencias en un rango de fechas.\n\n" +
-      "*/tareasPendientes <categoria>* \n Muestra únicamente las incidencias pendientes.\n\n" +
-      "*/tareasCompletadas <categoria>* \n Muestra únicamente las incidencias completadas.\n\n" +
-      "*/cancelarTarea <id>* \n Cancelar incidencia. \n\n" +
-      "*/tareaDetalles <id>* \n Muestra los detalles de una incidencia.\n\n";
+      "🌀🌀 *COMANDOS USUARIOS*🌀🌀 \n\n" +
+      "🪪 */id* \n Muestra tu ID.\n\n" +
+      "🆘 */ayuda* \n Muestra esta lista de comandos.\n\n" +
+      "✍️ */tareas <categoria>* \n Consulta incidencias de la categoría (it, ama, man).\n\n" +
+      "📅 */tareasFecha <YYYY-MM-DD>* \n Consulta incidencias de una fecha específica.\n\n" +
+      "🗓️ */tareasRango <fechaInicio> <fechaFin>* \n Consulta incidencias en un rango de fechas.\n\n" +
+      "📝 */tareasPendientes <categoria>* \n Muestra únicamente las incidencias pendientes.\n\n" +
+      "✅ */tareasCompletadas <categoria>* \n Muestra únicamente las incidencias completadas.\n\n" +
+      "❌ */cancelarTarea <id>* \n Cancelar incidencia. \n\n" +
+      "🔍 */tareaDetalles <id>* \n Muestra los detalles de una incidencia.\n\n\n" +
+      "🌀🌀🌀 *REPORTES* 🌀🌀🌀 \n\n" +
+      "📄 */generarReporte* \n Genera un reporte general con TODAS las incidencias.\n\n" +
+      "📅 */generarReporte <fechaInicio> <FechaFinal>* \n Reporte por rango de fechas\n\n" +
+      "⛳ */generarReporte <hoy>* \n Reporte de incidencias de hoy.\n\n" +
+      "👥 */generarReporte <it-ama-man>* \n Reporte de incidencias por categoria.\n\n" +
+      "🚦 */generarReporte <completada-pendiente-cancelada>* \n Reporte de incidencias por estado.\n\n" +
+      "*PUEDES COMBIANAR LOS PARAMETROS A TU GUSTO*\n" +
+      "*EJEMPLO:* \n" +
+      "/generarReporte hoy it completada\n\n";
+
     await chat.sendMessage(helpMessage);
     return true;
   }
@@ -55,8 +66,7 @@ async function handleCommands(client, message) {
       "*/registerUser <id> | <nombre-apellido> | <cargo> | <rol>* \n Registra un usuario.\n\n" +
       "*/editUser <id> | <nombre-apellido> | <cargo> | <rol>* \n Edita la información de un usuario.\n\n" +
       "*/removeUser <id>* \n Elimina un usuario.\n\n" +
-      "*/viewUser* \n Muestra la lista de usuarios registrados.\n\n" +
-      "*/generarReporte* \n Generar el reporte de incidencias.\n\n";
+      "*/viewUser* \n Muestra la lista de usuarios registrados.\n\n";
       
     await chat.sendMessage(helpAdminMessage);
     return true;
@@ -121,42 +131,56 @@ async function handleCommands(client, message) {
     return true;
   }
   
-  // Bloque para el comando: /generarReporte (solo para admin)
+  // /generarReporte [hoy]|[start end] [categorías] [estados]
   if (normalizedBody.startsWith('/generarreporte')) {
-    const currentUser = getUser(senderId);
-    if (!currentUser || currentUser.rol !== 'admin') {
-      await chat.sendMessage("No tienes permisos para ejecutar este comando.");
-      return true;
+    const parts = body.split(/\s+/);
+    let startDate, endDate;
+    let idx = 1;
+    // Si 'hoy'
+    if (parts[1] && parts[1].toLowerCase() === 'hoy') {
+      const hoy = moment().tz('America/Hermosillo').format('YYYY-MM-DD');
+      startDate = endDate = hoy;
+      idx = 2;
     }
-  
-    exportXLSX()
-      .then((outputPath) => {
-        if (fs.existsSync(outputPath)) {
-          const fileData = fs.readFileSync(outputPath, { encoding: 'base64' });
-          // Creamos el objeto MessageMedia usando WhatsappWeb.MessageMedia
-          const media = new WhatsappWeb.MessageMedia(
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            fileData,
-            'incidencias_export.xlsx'
-          );
-          // Envío al grupo principal usando el ID definido en config
-          client.getChatById(config.groupPruebaId)
-            .then(groupChat => {
-              groupChat.sendMessage(media);
-              groupChat.sendMessage("Reporte XLSX generado y enviado al grupo principal.");
-            })
-            .catch(err => {
-              console.error("Error al enviar el reporte:", err);
-              chat.sendMessage("Error al enviar el reporte al grupo principal.");
-            });
-        } else {
-          chat.sendMessage("No se encontró el reporte generado.");
-        }
-      })
-      .catch(err => {
-        console.error("Error al generar el reporte:", err);
-        chat.sendMessage("Error al generar el reporte.");
-      });
+    // Rango fechas
+    else if (parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]) &&
+             parts[2] && /^\d{4}-\d{2}-\d{2}$/.test(parts[2])) {
+      startDate = parts[1];
+      endDate = parts[2];
+      idx = 3;
+    }
+    // Capturar categorías y estados
+    const validCats = ['it','man','ama'];
+    const validStats = ['pendiente','completada','cancelada'];
+    const categories = [];
+    const statuses = [];
+    for (let i = idx; i < parts.length; i++) {
+      const p = parts[i].toLowerCase();
+      if (validCats.includes(p)) categories.push(p);
+      else if (validStats.includes(p)) statuses.push(p);
+    }
+    try {
+      const outputPath = await exportXLSX(startDate, endDate,
+        categories.length ? categories : undefined,
+        statuses.length ? statuses : undefined
+      );
+      if (fs.existsSync(outputPath)) {
+        const data = fs.readFileSync(outputPath, 'base64');
+        const media = new WhatsappWeb.MessageMedia(
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          data,
+          path.basename(outputPath)
+        );
+        const group = await client.getChatById(config.groupPruebaId);
+        await group.sendMessage(media);
+        await group.sendMessage(`Reporte XLSX generado y enviado: *${path.basename(outputPath)}*`);
+      } else {
+        await chat.sendMessage('No se encontró el reporte generado.');
+      }
+    } catch (err) {
+      console.error('Error al generar el reporte:', err);
+      await chat.sendMessage(`Error al generar el reporte: ${err.message}`);
+    }
     return true;
   }
 
