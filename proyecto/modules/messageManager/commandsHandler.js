@@ -131,58 +131,68 @@ async function handleCommands(client, message) {
     return true;
   }
   
-  // /generarReporte [hoy]|[start end] [categorías] [estados]
-  if (normalizedBody.startsWith('/generarreporte')) {
-    const parts = body.split(/\s+/);
-    let startDate, endDate;
-    let idx = 1;
-    // Si 'hoy'
-    if (parts[1] && parts[1].toLowerCase() === 'hoy') {
-      const hoy = moment().tz('America/Hermosillo').format('YYYY-MM-DD');
-      startDate = endDate = hoy;
-      idx = 2;
-    }
-    // Rango fechas
-    else if (parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]) &&
-             parts[2] && /^\d{4}-\d{2}-\d{2}$/.test(parts[2])) {
-      startDate = parts[1];
-      endDate = parts[2];
-      idx = 3;
-    }
-    // Capturar categorías y estados
-    const validCats = ['it','man','ama'];
-    const validStats = ['pendiente','completada','cancelada'];
-    const categories = [];
-    const statuses = [];
-    for (let i = idx; i < parts.length; i++) {
-      const p = parts[i].toLowerCase();
-      if (validCats.includes(p)) categories.push(p);
-      else if (validStats.includes(p)) statuses.push(p);
-    }
-    try {
-      const outputPath = await exportXLSX(startDate, endDate,
-        categories.length ? categories : undefined,
-        statuses.length ? statuses : undefined
-      );
-      if (fs.existsSync(outputPath)) {
-        const data = fs.readFileSync(outputPath, 'base64');
-        const media = new WhatsappWeb.MessageMedia(
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          data,
-          path.basename(outputPath)
-        );
-        const group = await client.getChatById(config.groupPruebaId);
-        await group.sendMessage(media);
-        await group.sendMessage(`Reporte XLSX generado y enviado: *${path.basename(outputPath)}*`);
-      } else {
-        await chat.sendMessage('No se encontró el reporte generado.');
-      }
-    } catch (err) {
-      console.error('Error al generar el reporte:', err);
-      await chat.sendMessage(`Error al generar el reporte: ${err.message}`);
-    }
-    return true;
+// Comando: /generarReporte [hoy]|[start end] [categorías] [estados]
+if (normalizedBody.startsWith('/generarreporte')) {
+  const parts = body.split(/\s+/);
+  let startDate, endDate;
+  let idx = 1;
+  // Si 'hoy'
+  if (parts[1] && parts[1].toLowerCase() === 'hoy') {
+    const hoy = moment().tz('America/Hermosillo').format('YYYY-MM-DD');
+    startDate = endDate = hoy;
+    idx = 2;
   }
+  // Rango fechas
+  else if (
+    parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]) &&
+    parts[2] && /^\d{4}-\d{2}-\d{2}$/.test(parts[2])
+  ) {
+    startDate = parts[1];
+    endDate = parts[2];
+    idx = 3;
+  }
+  // Capturar categorías y estados
+  const validCats = ['it', 'man', 'ama'];
+  const validStats = ['pendiente', 'completada', 'cancelada'];
+  const categories = [];
+  const statuses = [];
+  for (let i = idx; i < parts.length; i++) {
+    const p = parts[i].toLowerCase();
+    if (validCats.includes(p)) categories.push(p);
+    else if (validStats.includes(p)) statuses.push(p);
+  }
+  try {
+    // Generar reporte con filtros opcionales
+    const outputPath = await exportXLSX(
+      startDate,
+      endDate,
+      categories.length ? categories : undefined,
+      statuses.length ? statuses : undefined
+    );
+    if (!fs.existsSync(outputPath)) {
+      // Obtener chat de quien envió el comando
+      const chatOrigen = await message.getChat();
+      await chatOrigen.sendMessage('No se encontró el reporte generado.');
+      return true;
+    }
+
+    const data = fs.readFileSync(outputPath, 'base64');
+    const media = new WhatsappWeb.MessageMedia(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      data,
+      path.basename(outputPath)
+    );
+    // Enviar al chat origen (grupo o DM)
+    const chatOrigen = await message.getChat();
+    await chatOrigen.sendMessage(media);
+    await chatOrigen.sendMessage(`Reporte XLSX generado y enviado: *${path.basename(outputPath)}*`);
+  } catch (err) {
+    console.error('Error al generar el reporte:', err);
+    const chatOrigen = await message.getChat();
+    await chatOrigen.sendMessage(`Error al generar el reporte: ${err.message}`);
+  }
+  return true;
+}
 
   // Comando: /reloadkeywords
   if (normalizedBody.startsWith('/reloadkeywords')) {

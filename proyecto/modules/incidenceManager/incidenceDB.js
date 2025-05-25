@@ -23,7 +23,11 @@ function initDB() {
                 feedbackHistory TEXT,
                 grupoOrigen TEXT,
                 media TEXT,
-                fechaCancelacion TEXT
+                fechaCancelacion TEXT,
+                fechaFinalizacion   TEXT,
+                completadoPorJid    TEXT,
+                completadoPorNombre TEXT,
+                faseActual          TEXT
               )`);
     }
   });
@@ -35,8 +39,8 @@ function getDB() {
 
 function insertarIncidencia(incidencia, callback) {
   const sql = `INSERT INTO incidencias 
-    (uniqueMessageId, originalMsgId, descripcion, reportadoPor, fechaCreacion, estado, categoria, confirmaciones, feedbackHistory, grupoOrigen, media) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    (uniqueMessageId, originalMsgId, descripcion, reportadoPor, fechaCreacion, estado, categoria, confirmaciones, feedbackHistory, grupoOrigen, media, fechaFinalizacion, completadoPorJid, completadoPorNombre) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   db.run(sql, [
     incidencia.uniqueMessageId,
     incidencia.originalMsgId,
@@ -48,7 +52,10 @@ function insertarIncidencia(incidencia, callback) {
     incidencia.confirmaciones ? JSON.stringify(incidencia.confirmaciones) : null,
     JSON.stringify([]), // Iniciar feedbackHistory como un arreglo vacío.
     incidencia.grupoOrigen,
-    incidencia.media
+    incidencia.media,
+    null, // fechaFinalizacion
+    null, // completadoPorJid
+    null // completadoPorNombre
   ], function(err) {
     callback(err, this.lastID);
   });
@@ -241,6 +248,37 @@ function updateCategoria(id, categoria, callback) {
   db.run(sql, [categoria, id], err => callback(err));
 }
 
+
+/**
+ * Marca la incidencia como completada, guardando estado, quién y cuándo.
+ * @param {number}   id             ID de la incidencia.
+ * @param {string}   completedJid   JID de WhatsApp de quien completa.
+ * @param {string}   completedName  Nombre legible (desde users.json).
+ * @param {string}   completionTime ISO timestamp de finalización.
+ * @param {function} cb             Callback(err).
+ */
+function completeIncidencia(id, completedJid, completedName, completionTime, cb) {
+  const sql = `
+    UPDATE incidencias
+    SET
+      estado              = ?,
+      fechaFinalizacion   = ?,
+      completadoPorJid    = ?,
+      completadoPorNombre = ?
+    WHERE id = ?
+  `;
+  db.run(
+    sql,
+    ["completada", completionTime, completedJid, completedName, id],
+    cb
+  );
+}
+
+function updateFase(incidenciaId, fase, cb) {
+  const sql = `UPDATE incidencias SET faseActual = ? WHERE id = ?`;
+  db.run(sql, [fase, incidenciaId], cb);
+}
+
 module.exports = {
   initDB,
   getDB,
@@ -256,5 +294,7 @@ module.exports = {
   updateFeedbackHistory,
   cancelarIncidencia,
   updateDescripcion,
-  updateCategoria
+  updateCategoria,
+  completeIncidencia,
+  updateFase
 };

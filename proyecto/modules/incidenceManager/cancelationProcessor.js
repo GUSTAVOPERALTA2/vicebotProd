@@ -1,113 +1,138 @@
-// cancelationProcessor.js
-
+// vicebot/modules/incidenceManager/cancelationProcessor.js
 const incidenceDB = require('./incidenceDB');
 const { getUser } = require('../../config/userManager');
 const { normalizeText, adaptiveSimilarityCheck } = require('../../config/stringUtils');
+const config = require('../../config/config');
 
 /**
- * processCancelationNewMethod - Procesa una solicitud de cancelación mediante la cita de un mensaje.
- *
- * Se adapta para que la comparación se haga de forma parcial utilizando fuzzy matching.
+ * processCancelationNewMethod - Procesa la cancelación citando mensajes del bot o del sistema.
+ * - Soporta fuzzy matching en palabras y frases de cancelación.
+ * - Detecta citas de recordatorios, detalles de incidencia y del mensaje de envío a equipos.
+ * - Al cancelar, notifica en el chat original, en destinos y (si procede) en el grupo principal.
  */
 async function processCancelationNewMethod(client, message) {
   const chat = await message.getChat();
-  // Normalizamos el cuerpo del mensaje
   const text = normalizeText(message.body);
-  
-  // Obtenemos las palabras y frases de cancelación definidas en keywords.json
-  const cancelacionData = client.keywordsData.cancelacion;
-  if (!cancelacionData) {
-    return false;
+  const cancelData = client.keywordsData.cancelacion;
+  if (!cancelData) return false;
+
+  // Validar palabra o frase de cancelación (fuzzy match)
+  let validCancel = cancelData.palabras.some(w => adaptiveSimilarityCheck(text, normalizeText(w)));
+  if (!validCancel) validCancel = cancelData.frases.some(f => text.includes(normalizeText(f)));
+  if (!validCancel || !message.hasQuotedMsg) return false;
+
+  // Extraer mensaje citado e identificar tipo
+  const quoted = await message.getQuotedMessage();
+  const qBody = quoted.body;
+  const qNorm = normalizeText(qBody);
+  let lookupMethod;
+  let lookupId;
+
+  // Cita de envío a equipos del bot
+  if (qNorm.startsWith('🤖 el mensaje se ha enviado al equipo') || qNorm.includes('el mensaje se ha enviado al equipo')) {
+    const m = qBody.match(/ID:\s*(\d+)/i);
+    if (m) { lookupMethod = 'byId'; lookupId = m[1]; }
+    else { await chat.sendMessage('No se pudo extraer el ID del mensaje del bot.'); return true; }
   }
-  
-  // Recorremos las palabras de cancelación y comprobamos si el mensaje tiene similitud parcial
-  let validCancel = false;
-  for (let word of cancelacionData.palabras) {
-    if (adaptiveSimilarityCheck(text, normalizeText(word))) {
-      console.log(`Cancelación detectada: "${text}" coincide parcialmente con "${word}"`);
-      validCancel = true;
-      break;
-    }
+  // Cita de recordatorio
+  else if (qNorm.startsWith('recordatorio:') || qNorm.includes('recordatorio')) {
+    const m = qBody.match(/ID:\s*(\d+)/i);
+    if (m) { lookupMethod = 'byId'; lookupId = m[1]; }
+    else { await chat.sendMessage('No se encontró el ID en el recordatorio.'); return true; }
   }
-  
-  // Si no se encontró en palabras, comprobamos las frases
-  if (!validCancel) {
-    for (let phrase of cancelacionData.frases) {
-      const normalizedPhrase = normalizeText(phrase);
-      if (text.includes(normalizedPhrase)) {
-        console.log(`Cancelación detectada: "${text}" incluye la frase "${phrase}"`);
-        validCancel = true;
-        break;
-      }
-    }
+  // Cita de detalles de incidencia
+  else if (qNorm.startsWith('detalles de la incidencia')) {
+    const m = qBody.match(/ID:\s*(\d+)/i);
+    if (m) { lookupMethod = 'byId'; lookupId = m[1]; }
+    else { await chat.sendMessage('No se pudo extraer el ID de los detalles de incidencia.'); return true; }
   }
-  
-  if (message.hasQuotedMsg && validCancel) {
-    const quotedMessage = await message.getQuotedMessage();
-    let incidenceLookupMethod = null;
-    let incidenceLookupId = null;
-    
-    if (quotedMessage.body.toLowerCase().startsWith("*detalles de la incidencia")) {
-      const match = quotedMessage.body.match(/ID:\s*(\d+)/i);
-      if (match) {
-        incidenceLookupMethod = 'byId';
-        incidenceLookupId = match[1];
-      } else {
-        chat.sendMessage("No se pudo extraer el ID de la incidencia del mensaje de detalles.");
-        return true;
-      }
+  // Otro, usar originalMsgId
+  else {
+    lookupMethod = 'byOriginalMsgId';
+    lookupId = quoted.id._serialized;
+  }
+
+  // Recuperar incidencia
+  let incidencia;
+  try {
+    if (lookupMethod === 'byId') {
+      incidencia = await new Promise((res, rej) =>
+        incidenceDB.getIncidenciaById(lookupId, (err, row) => err ? rej(err) : res(row))
+      );
     } else {
-      incidenceLookupMethod = 'byOriginalMsgId';
-      incidenceLookupId = quotedMessage.id._serialized;
+      incidencia = await incidenceDB.buscarIncidenciaPorOriginalMsgIdAsync(lookupId);
     }
-    
-    try {
-      let incidence;
-      if (incidenceLookupMethod === 'byId') {
-        incidence = await new Promise((resolve, reject) => {
-          incidenceDB.getIncidenciaById(incidenceLookupId, (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-          });
-        });
-      } else if (incidenceLookupMethod === 'byOriginalMsgId') {
-        incidence = await incidenceDB.buscarIncidenciaPorOriginalMsgIdAsync(incidenceLookupId);
-      }
-      
-      if (!incidence) {
-        chat.sendMessage("No se encontró la incidencia asociada a ese mensaje.");
-        return true;
-      }
-      
-      const senderId = message.author ? message.author : message.from;
-      const currentUser = getUser(senderId);
-      if (incidence.reportadoPor !== senderId && (!currentUser || currentUser.rol !== 'admin')) {
-        chat.sendMessage("No tienes permisos para cancelar esta incidencia.");
-        return true;
-      }
-      
-      if (incidence.estado !== "pendiente") {
-        chat.sendMessage("La incidencia no se puede cancelar porque no está en estado pendiente.");
-        return true;
-      }
-      
-      return new Promise((resolve) => {
-        incidenceDB.cancelarIncidencia(incidence.id, (err) => {
-          if (err) {
-            chat.sendMessage("Error al cancelar la incidencia.");
-          } else {
-            chat.sendMessage(`La incidencia con ID ${incidence.id} ha sido cancelada.`);
-          }
-          resolve(true);
-        });
-      });
-    } catch (error) {
-      chat.sendMessage("Error al buscar la incidencia.");
-      return true;
-    }
+  } catch (e) {
+    console.error('Error al buscar incidencia:', e);
+    await chat.sendMessage('Error al buscar la incidencia.');
+    return true;
   }
-  
-  return false;
+  if (!incidencia) {
+    await chat.sendMessage('No se encontró la incidencia asociada.');
+    return true;
+  }
+
+  // Validar permisos
+  const sender = message.author || message.from;
+  const user = getUser(sender);
+  if (incidencia.reportadoPor !== sender && (!user || user.rol !== 'admin')) {
+    await chat.sendMessage('No tienes permisos para cancelar esta incidencia.');
+    return true;
+  }
+  if (incidencia.estado !== 'pendiente') {
+    await chat.sendMessage('La incidencia no está pendiente y no se puede cancelar.');
+    return true;
+  }
+
+  // Preparar datos para mensaje
+  const who = user ? `${user.nombre}(${user.cargo})` : sender;
+  const originalDesc = incidencia.descripcion;
+
+  // Cancelar e informar
+  return new Promise(res => {
+    incidenceDB.cancelarIncidencia(incidencia.id, async err => {
+      if (err) {
+        await chat.sendMessage('Error al cancelar la incidencia.');
+      } else {
+        // Mensaje al chat que solicitó cancelación
+        await chat.sendMessage(
+          `🤖 *La incidencia ID ${incidencia.id}:* ${originalDesc}\n\n` +
+          `*Ha sido cancelada por ${who}.*`
+        );
+
+        // Notificar a grupos destino
+        const cats = incidencia.categoria.split(',').map(c => c.trim().toLowerCase());
+        for (let cat of cats) {
+          const grp = config.destinoGrupos[cat];
+          if (grp) {
+            try {
+              const destChat = await client.getChatById(grp);
+              await destChat.sendMessage(
+                `🤖 *La incidencia ID ${incidencia.id}:* ${originalDesc}\n\n` +
+                `*Ha sido cancelada por ${who}.*`
+              );
+            } catch (e) {
+              console.error(`Error notificando cancelación al grupo ${grp}:`, e);
+            }
+          }
+        }
+
+        // Notificar al grupo principal si no fue allí originalmente
+        if (chat.id._serialized !== config.groupPruebaId) {
+          try {
+            const main = await client.getChatById(config.groupPruebaId);
+            await main.sendMessage(
+              `🤖 *La incidencia ID ${incidencia.id}:* ${originalDesc}\n\n` +
+              `*Ha sido cancelada por ${who}.*`
+            );
+          } catch (e) {
+            console.error('Error notificando cancelación al grupo principal:', e);
+          }
+        }
+      }
+      res(true);
+    });
+  });
 }
 
 module.exports = { processCancelationNewMethod };

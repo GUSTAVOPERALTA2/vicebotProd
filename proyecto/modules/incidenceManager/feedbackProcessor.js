@@ -49,17 +49,35 @@ async function detectFeedbackRequest(client, message) {
  */
 async function extractFeedbackIdentifier(quotedMessage) {
   const text = quotedMessage.body;
+  const norm = text.trim();
   console.log("Texto del mensaje citado:", text);
   
-  if (text.includes("Detalles de la incidencia")) {
-    const regex = /Detalles de la incidencia\s*\(ID:\s*(\d+)\)/i;
-    const match = text.match(regex);
+  // 1) Cita del mensaje de envío a equipos del bot
+  if (norm.includes('mensaje se ha enviado al equipo')) {
+    const match = text.match(/ID:\s*(\d+)/i);
+    if (match) {
+      console.log("ID encontrado en cita de envío al equipo:", match[1]);
+      return match[1];
+    }
+  }
+  // 2) Cita de detalles de incidencia
+  if (/detalles de la incidencia/i.test(text)) {
+    const match = text.match(/ID:\s*(\d+)/i);
     if (match) {
       console.log("Identificador numérico encontrado en mensaje de detalles:", match[1]);
       return match[1];
     }
   }
-  
+    // 3) Cita de recordatorio
+  if (/recordatorio:/i.test(text)) {
+    const match = text.match(/ID:\s*(\d+)/i);
+    if (match) {
+      console.log("ID encontrado en recordatorio:", match[1]);
+      return match[1];
+    }
+  }
+
+  // 4) Por defecto, usar metadata originalMsgId
   if (quotedMessage.id && quotedMessage.id._serialized) {
     console.log("Extrayendo identificador del mensaje citado (metadata):", quotedMessage.id._serialized);
     return quotedMessage.id._serialized;
@@ -130,10 +148,11 @@ async function processFeedbackResponse(client, message, incidence) {
       }
       console.log(`Feedback registrado para la incidencia ID ${incidence.id}:`, feedbackRecord);
       // Luego se envía el mensaje al grupo principal
-      const responseMsg = `RESPUESTA DE RETROALIMENTACION\n` +
+      const responseMsg = `*RESPUESTA DE RETROALIMENTACION* \n\n` +
             `${incidence.descripcion}\n\n` +
-            `${team.toUpperCase()} RESPONDE:\n${message.body}\n\n` +
-            `ID: ${incidence.id}`;
+            `*${team.toUpperCase()} RESPONDE:* \n\n` +
+            `${message.body}\n\n` +
+            `*ID:* ${incidence.id}`;
       client.getChatById(config.groupPruebaId)
         .then(mainGroupChat => {
           mainGroupChat.sendMessage(responseMsg)
@@ -363,10 +382,11 @@ async function processTeamFeedbackResponse(client, message) {
             return reject("Error al registrar el feedback.");
           }
           console.log(`Feedback registrado para la incidencia ID ${incidence.id}:`, feedbackRecord);
-          const responseMsg = `RESPUESTA DE RETROALIMENTACION\n` +
-                              `${incidence.descripcion}\n` +
-                              `${team.toUpperCase()} RESPONDE:\n${message.body}\n\n` +
-                              `ID: ${incidence.id}`;
+          const responseMsg = `🤖 *RESPUESTA DE RETROALIMENTACION* \n\n` +
+                              `${incidence.descripcion}\n\n` +
+                              `*${team.toUpperCase()} RESPONDE:* \n\n` +
+                              `${message.body}\n\n` +
+                              `*ID:* ${incidence.id}`;
           client.getChatById(config.groupPruebaId)
             .then(mainGroupChat => {
               mainGroupChat.sendMessage(responseMsg)
