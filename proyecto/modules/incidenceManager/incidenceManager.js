@@ -1,6 +1,7 @@
+/* File: modules/incidenceManager/incidenceManager.js */
 const config = require('../../config/config');
 const { processNewIncidence } = require('./newIncidence');
-const { handleFeedbackRequestFromOrigin, processTeamFeedbackResponse } = require('./feedbackProcessor');
+const { requestFeedback, handleTeamResponse } = require('./feedbackProcessor');
 const { processConfirmation } = require('./confirmationProcessor');
 // Importamos la función normalizeText desde el nuevo módulo stringUtils
 const { normalizeText } = require('../../config/stringUtils');
@@ -56,7 +57,7 @@ async function handleIncidence(client, message) {
 
       if (foundIndicator) {
         console.log("Indicadores retro detectados, procesando solicitud de feedback.");
-        await handleFeedbackRequestFromOrigin(client, message);
+        await requestFeedback(client, message);
         return;
       } else {
         await chat.sendMessage("🤖❌ *La forma de contestación no es válida para registrar una incidencia. Por favor, envía tu incidencia sin citar un mensaje.*");
@@ -69,7 +70,7 @@ async function handleIncidence(client, message) {
 
   // Mensajes provenientes de grupos destino (IT, Mantenimiento, Ama de Llaves)
   } else if ([config.groupBotDestinoId, config.groupMantenimientoId, config.groupAmaId].includes(chatId)) {
-    await processTeamFeedbackResponse(client, message);
+    await handleTeamResponse(client, message);
   } else {
     console.log("Mensaje de grupo no gestionado. Se omite.");
   }

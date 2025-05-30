@@ -109,7 +109,6 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
     const imgId = workbook.addImage({ filename: logoPath, extension: 'png' });
     inc.addImage(imgId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 } });
   }
-  // une desde A1 hasta K1 (son 11 columnas)
   inc.mergeCells(1, 1, 1, 11);
   const incHdr = inc.getCell('C1');
   incHdr.value = `REPORTE DE INCIDENCIAS ${headerText}`;
@@ -158,13 +157,11 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
 
     // Lista de todos los confirmadores (incluye repeticiones) con cargo
     const completadoPorNombre = confirmations
-    .map(h => {
-      const u = getUser(h.usuario);
-      return u
-        ? `${u.nombre}(${u.cargo})`
-        : h.usuario;
-    })
-    .join('\n');
+      .map(h => {
+        const u = getUser(h.usuario);
+        return u ? `${u.nombre}(${u.cargo})` : h.usuario;
+      })
+      .join('\n');
 
     // Fecha de la última confirmación
     const lastDate =
@@ -176,44 +173,44 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
     const faseActual = `${confirmations.length} de ${teams.length}`;
 
     // 1) Añadir la fila y capturarla
-  const newRow = inc.addRow({
-    id: r.id,
-    descripcion: r.descripcion,
-    reportadoPor: rep,
-    fechaCreacion: formatDate(r.fechaCreacion),
-    estado: r.estado.toUpperCase(),
-    categoria: r.categoria.toUpperCase(),
-    confirmaciones: conf,
-    completadoPorNombre,  // ya formateado con saltos de línea y cargo
-    faseActual,
-    fechaFinalizacion,
-    fechaCancelacion: r.fechaCancelacion ? formatDate(r.fechaCancelacion) : ''
+    const newRow = inc.addRow({
+      id: r.id,
+      descripcion: r.descripcion,
+      reportadoPor: rep,
+      fechaCreacion: formatDate(r.fechaCreacion),
+      estado: r.estado.toUpperCase(),
+      categoria: r.categoria.toUpperCase(),
+      confirmaciones: conf,
+      completadoPorNombre,
+      faseActual,
+      fechaFinalizacion,
+      fechaCancelacion: r.fechaCancelacion ? formatDate(r.fechaCancelacion) : ''
+    });
+
+    // 2) Pintar la celda de Estado (columna 5)
+    const cell = newRow.getCell(5);
+    const val = (r.estado || '').toLowerCase();
+    if (val === 'completada') {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF00FF00' }
+      };
+    } else if (val === 'cancelada') {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFF0000' }
+      };
+    } else if (val === 'pendiente') {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFFF00' }
+      };
+    }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
   });
-  
-  // 2) Pintar la celda de Estado (columna 5)
-  const cell = newRow.getCell(5);
-  const val = (r.estado || '').toLowerCase();
-  if (val === 'completada') {
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF00FF00' }
-    };
-  } else if (val === 'cancelada') {
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFF0000' }
-    };
-  } else if (val === 'pendiente') {
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFFFFF00' }
-    };
-  }
-  cell.alignment = { vertical: 'middle', horizontal: 'center' };
-});
 
   // 4) Hoja Feedback
   const fb = workbook.addWorksheet('Feedback');
@@ -222,33 +219,42 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
     const logoId2 = workbook.addImage({ filename: logoPath, extension: 'png' });
     fb.addImage(logoId2, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 } });
   }
-  fb.mergeCells(1, 1, 1, 4);
+  fb.mergeCells(1, 1, 1, 5);
   const fbHdr = fb.getCell('C1');
   fbHdr.value = `REPORTE DE INCIDENCIAS ${headerText}`;
   fbHdr.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
   fbHdr.alignment = { horizontal: 'center', vertical: 'middle' };
   fbHdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC7722' } };
+
   fb.columns = [
     { header: 'Incidencia ID', key: 'incidenciaId', width: 10 },
-    { header: 'Equipo', key: 'equipo', width: 15 },
-    { header: 'Comentario', key: 'comentario', width: 50 },
-    { header: 'Fecha', key: 'fecha', width: 20 }
+    { header: 'Equipo',        key: 'equipo',      width: 15 },
+    { header: 'Usuario',       key: 'usuario',     width: 25 },
+    { header: 'Comentario',    key: 'comentario',  width: 50 },
+    { header: 'Fecha',         key: 'fecha',       width: 20 }
   ];
-  fb.getRow(2).values = ['Incidencia ID', 'Equipo', 'Comentario', 'Fecha'];
+  fb.getRow(2).values = ['Incidencia ID', 'Equipo', 'Usuario', 'Comentario', 'Fecha'];
   fb.getRow(2).font = { bold: true };
   fb.views = [{ state: 'frozen', ySplit: 2 }];
 
   rows.forEach(r => {
+    let history = [];
     try {
-      JSON.parse(r.feedbackHistory || '[]').forEach(rec => {
+      history = JSON.parse(r.feedbackHistory || '[]');
+    } catch {}
+
+    // Incluir únicamente los registros de tipo 'feedbackrespuesta'
+    history
+      .filter(rec => rec.tipo === 'feedbackrespuesta')
+      .forEach(rec => {
         fb.addRow({
           incidenciaId: r.id,
-          equipo: rec.equipo?.toUpperCase(),
-          comentario: rec.comentario,
-          fecha: rec.fecha ? formatDate(rec.fecha) : ''
+          equipo:      rec.equipo?.toUpperCase(),
+          usuario:     rec.usuario,
+          comentario:  rec.comentario,
+          fecha:       rec.fecha ? formatDate(rec.fecha) : ''
         });
       });
-    } catch {}
   });
 
   // 5) Guardar archivo con filtros en nombre

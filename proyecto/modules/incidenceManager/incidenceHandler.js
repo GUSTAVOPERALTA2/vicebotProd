@@ -1,7 +1,7 @@
 /* File: modules/incidenceManager/incidenceHandler.js */
 const config = require('../../config/config');
 const { processNewIncidence } = require('./newIncidence');
-const { handleFeedbackRequestFromOrigin, processTeamFeedbackResponse } = require('./feedbackProcessor');
+const { requestFeedback, handleTeamResponse } = require('./feedbackProcessor');
 const { processConfirmation } = require('./confirmationProcessor');
 
 async function handleIncidence(client, message) {
@@ -10,7 +10,6 @@ async function handleIncidence(client, message) {
   // --- Mensajes directos (DM) ---
   if (!chat.isGroup) {
     console.log(`📩 Procesando incidencia desde DM: ${message.from}`);
-    // Registrar nueva incidencia desde DM
     await processNewIncidence(client, message);
     return;
   }
@@ -23,25 +22,22 @@ async function handleIncidence(client, message) {
       const quotedMessage = await message.getQuotedMessage();
       const normalizedQuoted = quotedMessage.body.replace(/\*/g, '').trim().toLowerCase();
 
-      // Si el mensaje citado es un recordatorio, se procesa como confirmación
+      // Confirmaciones de recordatorio o nueva tarea
       if (normalizedQuoted.startsWith("recordatorio: tarea incompleta")) {
         console.log("Recordatorio detectado en grupo principal, redirigiendo a processConfirmation.");
         await processConfirmation(client, message);
         return;
       }
-
-      // Si el mensaje citado es una nueva tarea, también se permite confirmar
       if (normalizedQuoted.startsWith("nueva tarea recibida")) {
         console.log("Nueva tarea detectada en grupo principal, redirigiendo a processConfirmation.");
         await processConfirmation(client, message);
         return;
       }
 
-      // Si es una solicitud de retroalimentación
+      // Solicitud de retroalimentación
       const normalizedText = message.body.trim().toLowerCase();
       const retroPhrases = client.keywordsData.retro?.frases || [];
       const retroWords = client.keywordsData.retro?.palabras || [];
-
       let foundIndicator = false;
       for (let phrase of retroPhrases) {
         if (normalizedText.includes(phrase.toLowerCase())) {
@@ -61,7 +57,7 @@ async function handleIncidence(client, message) {
 
       if (foundIndicator) {
         console.log("Indicadores retro detectados, procesando solicitud de feedback.");
-        await handleFeedbackRequestFromOrigin(client, message);
+        await requestFeedback(client, message);
         return;
       } else {
         await chat.sendMessage("La forma de contestación no es válida para registrar una incidencia. Por favor, envía tu incidencia sin citar un mensaje.");
@@ -69,12 +65,12 @@ async function handleIncidence(client, message) {
       }
     }
 
-    // Si no hay mensaje citado, procesar como nueva incidencia
+    // Nueva incidencia sin cita
     await processNewIncidence(client, message);
 
-  // Mensajes provenientes de grupos destino
+  // Respuesta de equipos destino
   } else if ([config.groupBotDestinoId, config.groupMantenimientoId, config.groupAmaId].includes(chatId)) {
-    await processTeamFeedbackResponse(client, message);
+    await handleTeamResponse(client, message);
   } else {
     console.log("Mensaje de grupo no gestionado. Se omite.");
   }
