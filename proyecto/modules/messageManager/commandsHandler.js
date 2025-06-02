@@ -488,15 +488,16 @@ if (normalizedBody.startsWith('/generarreporte')) {
       if (err) {
         chat.sendMessage("Error al consultar incidencias.");
       } else {
-        const pendingRows = rows.filter(r => r.estado !== "completada");
+        // Filtramos sólo las que estén en estado "pendiente"
+        const pendingRows = rows.filter(r => r.estado === "pendiente");
         let summary = `Incidencias pendientes en categoría ${categoria.toUpperCase()}:\n\n`;
         if (!pendingRows.length) {
           summary += "No hay incidencias pendientes en esta categoría.";
         } else {
           pendingRows.forEach(row => {
             summary += 
-            `\n▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n`+
-            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
+              `\n▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n` +
+              `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
           });
         }
         chat.sendMessage(summary);

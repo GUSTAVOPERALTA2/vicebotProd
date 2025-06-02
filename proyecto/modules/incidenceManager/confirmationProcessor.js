@@ -1,119 +1,104 @@
-// modules/incidenceManager/confirmationProcessor.js
+// File: modules/incidenceManager/confirmationProcessor.js
 
 const config = require('../../config/config');
 const { completeIncidencia, updateFase } = require('./incidenceDB');
 const { getUser }                       = require('../../config/userManager');
 const incidenceDB                       = require('./incidenceDB');
 const moment                            = require('moment-timezone');
-const { normalizeText, adaptiveSimilarityCheck } = require('../../config/stringUtils');
+const { normalizeText }                 = require('../../config/stringUtils');
 const { formatDate }                    = require('../../config/dateUtils');
+// Importamos el extractor unificado de identificadores
+const { extractIdentifier }             = require('./identifierExtractor');
 
+/**
+ * processConfirmation - Procesa un mensaje de confirmación recibido en los grupos destino
+ *                       o desde DM citando un ACK ("El mensaje se ha enviado al equipo:")
+ *                       o citando “Detalles de la incidencia (ID: X)”.
+ */
 async function processConfirmation(client, message) {
-  console.log('🛠️ processConfirmation invoked:', { from: message.from, body: message.body });
+  const chat   = await message.getChat();
+  const chatId = chat.id._serialized;
 
   if (!message.hasQuotedMsg) {
-    console.log('⚠️ No hay mensaje citado, abortando');
+    console.log('❌ processConfirmation: no hay mensaje citado, saliendo');
     return;
   }
 
-  const chat     = await message.getChat();
-  const chatId   = chat.id._serialized;
   const quotedMsg = await message.getQuotedMessage();
 
-  // 1) Normalizar el texto citado:
-  //    a) Descomponer y quitar diacríticos (acentos)
-  //    b) Quitar asteriscos
-  //    c) Pasar a minúsculas
-  //    d) Filtrar todo salvo letras, dígitos, espacios y ':'
-  let norm = quotedMsg.body
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita acentos
-    .replace(/\*/g, '')                                // quita asteriscos
-    .toLowerCase()
-    .replace(/[^\p{L}\d\s:]/gu, ' ')                   // deja solo letras, dígitos, espacios, ':'
-    .trim();
-  console.log('🔍 normalized quoted:', norm);
-
-  // 2) Extraer primera línea y quitar ':' para comparar
-  const firstLine = norm.split('\n')[0].replace(/:/g, '').trim();
-  console.log('🔍 firstLine:', firstLine);
-
-  const allowedStarts = [
-    'recordatorio tarea incompleta',
-    'nueva tarea recibida',
-    'recordatorio incidencia',
-    'solicitud de retroalimentacion para la tarea'
-  ];
-  const headerOk = allowedStarts.some(pref => firstLine.startsWith(pref));
-  console.log('🔍 headerOk:', headerOk);
-  if (!headerOk) {
-    console.log('❌ Encabezado no admite confirmación, saliendo');
+  // 1) Extraer el ID de la incidencia usando el extractor unificado
+  const incidenciaId = await extractIdentifier(quotedMsg);
+  console.log('🔍 processConfirmation extraído incidenciaId:', incidenciaId);
+  if (!incidenciaId) {
+    console.log('❌ processConfirmation: no se encontró ID en la cita, saliendo');
     return;
   }
 
-  // 3) Extraer ID: "id: X" o "tarea X"
-  const idMatch = norm.match(/(?:id:\s*(\d+)|tarea\s+(\d+))/);
-  if (!idMatch) {
-    console.log('❌ No se encontró ID en normalized text, saliendo');
-    return;
-  }
-  const incidenciaId = idMatch[1] || idMatch[2];
-  console.log('🔍 incidenciaId extraído:', incidenciaId);
-  
-  // 4) Detectar confirmación por keywords
-  const textLow  = normalizeText(message.body);
+  // 2) Detectar palabra/frase de confirmación en el cuerpo del mensaje
+  const textLow  = message.body.toLowerCase();
   const tokens   = new Set(textLow.split(/\s+/));
-  const confData = client.keywordsData.respuestas.confirmacion || {};
-  const phraseOk = (confData.frases || []).some(p => textLow.includes(normalizeText(p)));
-  const wordOk   = (confData.palabras || []).some(w => tokens.has(normalizeText(w)));
-  console.log('🔍 phraseOk:', phraseOk, 'wordOk:', wordOk);
+  const phraseOk = (client.keywordsData.respuestas.confirmacion.frases || [])
+                    .some(p => textLow.includes(p.toLowerCase()));
+  const wordOk   = (client.keywordsData.respuestas.confirmacion.palabras || [])
+                    .some(w => tokens.has(w.toLowerCase()));
+  console.log('🔍 processConfirmation textLow:', textLow, 'phraseOk:', phraseOk, 'wordOk:', wordOk);
   if (!(phraseOk || wordOk)) {
-    console.log('❌ No es confirmación, saliendo');
+    console.log('❌ processConfirmation: no es palabra/frase de confirmación, saliendo');
     return;
   }
 
-  // 5) Cargar incidencia de BD
+  // 3) Cargar incidencia desde la base de datos
   incidenceDB.getIncidenciaById(incidenciaId, async (err, incidencia) => {
     if (err || !incidencia) {
-      console.error('❌ Error al cargar incidencia:', err);
+      console.error('❌ Error al obtener incidencia en processConfirmation:', err);
       return;
     }
-    console.log('🔍 Incidencia cargada:', incidencia);
+    console.log('✅ Incidencia cargada en processConfirmation:', incidencia);
 
-    // 6) Lógica de confirmación...
-    const requiredTeams = incidencia.categoria.split(',').map(c => c.trim().toLowerCase());
-    let categoria = '';
-    if (chatId === config.groupBotDestinoId)         categoria = 'it';
-    else if (chatId === config.groupMantenimientoId) categoria = 'man';
-    else if (chatId === config.groupAmaId)           categoria = 'ama';
-    console.log('🔍 Equipo responde:', categoria);
+    // 4) Destinos requeridos según la categoría de la incidencia
+    const requiredTeams = incidencia.categoria
+      .split(',')
+      .map(c => c.trim().toLowerCase());
 
-    // Timestamp y registro en memoria
+    // 5) Determinar “categoría” de quien confirma:
+    //    - Si viene desde un grupo destino (IT, MAN, AMA), la tomamos de allí.
+    //    - Si no, asumimos que viene desde DM (ACK) y tomamos la primera categoría en inc.categoria.
+    let categoriaEquipo = '';
+    if (chatId === config.groupBotDestinoId)         categoriaEquipo = 'it';
+    else if (chatId === config.groupMantenimientoId) categoriaEquipo = 'man';
+    else if (chatId === config.groupAmaId)           categoriaEquipo = 'ama';
+    else {
+      categoriaEquipo = requiredTeams[0];
+      console.log('🔍 processConfirmation: confirmación desde DM, categoría asumida =', categoriaEquipo);
+    }
+
+    // 6) Registrar confirmación en memoria (objeto incidencia.confirmaciones)
     const nowTs = new Date().toISOString();
-    incidencia.confirmaciones = incidencia.confirmaciones && typeof incidencia.confirmaciones === 'object'
+    incidencia.confirmaciones = (incidencia.confirmaciones && typeof incidencia.confirmaciones === 'object')
       ? incidencia.confirmaciones
       : {};
-    incidencia.confirmaciones[categoria] = nowTs;
+    incidencia.confirmaciones[categoriaEquipo] = nowTs;
 
-    let history = [];
+    // 7) Añadir en feedbackHistory un objeto tipo “confirmacion”
+    let historyArray = [];
     try {
-      history = typeof incidencia.feedbackHistory === 'string'
+      historyArray = typeof incidencia.feedbackHistory === 'string'
         ? JSON.parse(incidencia.feedbackHistory)
         : incidencia.feedbackHistory || [];
     } catch {
-      history = [];
+      historyArray = [];
     }
-    history.push({
+    historyArray.push({
       usuario:    message.author || message.from,
       comentario: message.body,
       fecha:      nowTs,
-      equipo:     categoria,
+      equipo:     categoriaEquipo,
       tipo:       'confirmacion'
     });
-    console.log('🔍 Nuevo history:', history);
 
-    // Persistir
+    // 8) Persistir cambios en la base de datos
     await new Promise(res =>
-      incidenceDB.updateFeedbackHistory(incidenciaId, history, res)
+      incidenceDB.updateFeedbackHistory(incidenciaId, historyArray, res)
     );
     await new Promise(res =>
       incidenceDB.updateConfirmaciones(
@@ -122,19 +107,18 @@ async function processConfirmation(client, message) {
         res
       )
     );
-    console.log('✅ Cambios guardados en BD');
+    console.log('✅ Se actualizó feedbackHistory y confirmaciones para incidencia ID', incidenciaId);
 
     // Helper de emojis de equipos
     const EMOJIS = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
-    
-    // --- Rama ÚNICA DESTINO: completar inmediatamente ---
+
+    // 9) Si solo hay un equipo destino, completamos la incidencia de inmediato
     if (requiredTeams.length === 1) {
-      console.log('Incidencia de un solo equipo, completando inmediatamente');
       const completedJid   = message.author || message.from;
       const userRec        = getUser(completedJid);
       const completedName  = userRec ? userRec.nombre : completedJid;
       const completionTime = moment().tz('America/Mazatlan').toISOString();
-      
+
       completeIncidencia(
         incidenciaId,
         completedJid,
@@ -142,16 +126,16 @@ async function processConfirmation(client, message) {
         completionTime,
         async (err) => {
           if (err) {
-            console.error("Error al completar incidencia:", err);
+            console.error('❌ Error al completar incidencia:', err);
             return;
           }
-      
-          // Reply mínimo al citado
+
+          // Enviamos un reply mínimo al citado
           await quotedMsg.reply(
             `🤖✅ *Incidencia (ID: ${incidenciaId}) completada por ${completedName} el ${formatDate(completionTime)}*`
           );
 
-          // Preparamos resumen
+          // Preparamos mensaje final
           incidencia.completadoPorNombre = completedName;
           incidencia.fechaFinalizacion   = completionTime;
           incidencia.faseActual          = '1/1';
@@ -161,21 +145,19 @@ async function processConfirmation(client, message) {
           const originChat = await client.getChatById(incidencia.grupoOrigen);
           await originChat.sendMessage(finalMsg);
 
-          // Y también al grupo principal
+          // Y al grupo principal de incidencias
           const mainChat = await client.getChatById(config.groupPruebaId);
           await mainChat.sendMessage(finalMsg);
-          console.log('📣 Mensajes finales enviados');
         }
       );
       return;
     }
 
-    // --- MÚLTIPLES DESTINOS: sistema de fases ---
-    console.log('Incidencia con múltiples equipos, procesando fases');
+    // 10) Si hay múltiples equipos, aplicamos lógica de fases parciales o finales
     const originChat = await client.getChatById(incidencia.grupoOrigen);
     const mainChat   = await client.getChatById(config.groupPruebaId);
 
-    // 5.1) Computar equipos confirmados
+    // 10.1) Computar qué equipos ya han confirmado
     const confirmedTeams = Object.entries(incidencia.confirmaciones)
       .filter(([team, ts]) =>
         requiredTeams.includes(team) &&
@@ -184,16 +166,15 @@ async function processConfirmation(client, message) {
       )
       .map(([team]) => team);
 
-    // 5.2) Actualizar fase en BD
+    // 10.2) Actualizar fase (número de confirmaciones / total equipos)
     const totalTeams   = requiredTeams.length;
     const currentPhase = confirmedTeams.length;
     const faseString   = `${currentPhase}/${totalTeams}`;
     await new Promise(res => updateFase(incidenciaId, faseString, res));
 
-    // 5.3) Mensajes parciales o finales
+    // 10.3) Si no todos confirmaron aún, enviamos mensaje parcial
     if (currentPhase < totalTeams) {
-      // Parcial
-      const partial = buildPartialMessage(incidencia, requiredTeams, confirmedTeams, history, faseString);
+      const partial = buildPartialMessage(incidencia, requiredTeams, confirmedTeams, historyArray, faseString);
       await originChat.sendMessage(partial);
       await mainChat.sendMessage(partial);
 
@@ -205,13 +186,14 @@ async function processConfirmation(client, message) {
       await quotedMsg.reply(
         `🤖✅ *Incidencia (ID: ${incidenciaId}) confirmada fase ${faseString} por ${completedName} el ${formattedTime}*`
       );
-    } else {
-      // Final: todos confirmaron
+    }
+    else {
+      // 10.4) Si todos confirmaron, marcamos como completada
       const confirmersList = confirmedTeams
         .map(team => {
-          const rec = history.filter(r => r.equipo === team && r.tipo === 'confirmacion').pop();
+          const rec = historyArray.filter(r => r.equipo === team && r.tipo === 'confirmacion').pop();
           const u   = rec ? getUser(rec.usuario) : null;
-          return u ? u.nombre : rec ? rec.usuario : 'Desconocido';
+          return u ? u.nombre : (rec ? rec.usuario : 'Desconocido');
         })
         .join(', ');
 
@@ -234,10 +216,10 @@ async function processConfirmation(client, message) {
       await originChat.sendMessage(finalMsg);
       await mainChat.sendMessage(finalMsg);
     }
-  }); // getIncidenciaById callback
-} // processConfirmation
+  }); // Fin del callback de getIncidenciaById
+} // Fin de processConfirmation
 
-/** Helpers **/
+/** Helpers para formatear contenido **/
 
 function formatDuration(start, end) {
   const d = moment.duration(moment(end).diff(moment(start)));
@@ -247,16 +229,16 @@ function formatDuration(start, end) {
 function generarComentarios(inc, requiredTeams) {
   const emojis = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
   let text = '';
-  let history = [];
+  let historyArr = [];
   try {
-    history = typeof inc.feedbackHistory === 'string'
+    historyArr = typeof inc.feedbackHistory === 'string'
       ? JSON.parse(inc.feedbackHistory)
       : inc.feedbackHistory || [];
   } catch {
-    history = [];
+    historyArr = [];
   }
   requiredTeams.forEach(team => {
-    const rec = history.filter(r => r.equipo === team).pop();
+    const rec = historyArr.filter(r => r.equipo === team).pop();
     const comment = rec
       ? (rec.comentario?.trim() || (rec.tipo === 'confirmacion' ? 'Listo' : 'Sin comentarios'))
       : 'Sin comentarios';
@@ -265,15 +247,15 @@ function generarComentarios(inc, requiredTeams) {
   return text;
 }
 
-function buildPartialMessage(inc, required, confirmed, history, fase) {
+function buildPartialMessage(inc, required, confirmed, historyArr, fase) {
   const emojis = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
-  const diffStr = formatDuration(inc.fechaCreacion, new Date().toISOString());
+  const diffStr     = formatDuration(inc.fechaCreacion, new Date().toISOString());
   const comentarios = generarComentarios(inc, required);
-  const confirmers = confirmed
+  const confirmers  = confirmed
     .map(team => {
-      const rec = history.filter(r => r.equipo === team && r.tipo === 'confirmacion').pop();
+      const rec = historyArr.filter(r => r.equipo === team && r.tipo === 'confirmacion').pop();
       const u   = rec ? getUser(rec.usuario) : null;
-      return u ? u.nombre : rec ? rec.usuario : 'Desconocido';
+      return u ? u.nombre : (rec ? rec.usuario : 'Desconocido');
     })
     .join(', ') || 'Ninguno';
 
@@ -291,7 +273,7 @@ function buildPartialMessage(inc, required, confirmed, history, fase) {
 }
 
 function buildFinalMessage(inc, required) {
-  const emojis = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
+  const emojis   = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
   const createdAt   = formatDate(inc.fechaCreacion);
   const concludedAt = formatDate(inc.fechaFinalizacion);
   const totalStr    = formatDuration(inc.fechaCreacion, inc.fechaFinalizacion);
@@ -299,9 +281,9 @@ function buildFinalMessage(inc, required) {
     const ts  = inc.confirmaciones[team];
     return ts
       ? `*⌛Tiempo ${emojis[team]}:* ${formatDuration(inc.fechaCreacion, ts)
-          .replace(/ día\(s\), /,'d ')
-          .replace(/ hora\(s\), /,'h ')
-          .replace(/ minuto\(s\)/,'m')}`
+          .replace(/ día\(s\), /, 'd ')
+          .replace(/ hora\(s\), /, 'h ')
+          .replace(/ minuto\(s\)/, 'm')}`
       : `*⌛Tiempo ${emojis[team]}:* NaNd NaNh NaNm`;
   }).join('\n');
 
@@ -315,9 +297,9 @@ function buildFinalMessage(inc, required) {
     `*📅Conclusión:* ${concludedAt}\n\n` +
     `*👤 Completado por:* ${inc.completadoPorNombre}\n\n` +
     `*⏱️ Total:* ${totalStr
-      .replace(/ día\(s\), /,'d ')
-      .replace(/ hora\(s\), /,'h ')
-      .replace(/ minuto\(s\)/,'m')}\n` +
+      .replace(/ día\(s\), /, 'd ')
+      .replace(/ hora\(s\), /, 'h ')
+      .replace(/ minuto\(s\)/, 'm')}\n` +
     `${cronos}\n\n` +
     `*ID:* ${inc.id}\n\n` +
     `*MUCHAS GRACIAS POR SU PACIENCIA* 😊`

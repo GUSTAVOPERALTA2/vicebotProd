@@ -1,168 +1,220 @@
-// modules/incidenceManager/feedbackProcessor.js
+// File: modules/incidenceManager/feedbackProcessor.js
 
 const incidenceDB = require('./incidenceDB');
 const config = require('../../config/config');
 const { normalizeText } = require('../../config/stringUtils');
+const { extractIdentifier } = require('./identifierExtractor');
 const { getUser } = require('../../config/userManager');
-const { processConfirmation } = require('./confirmationProcessor');
 
 /**
- * extractFeedbackIdentifier - Extrae el identificador de una incidencia
- *   1) Busca un ID numérico en el texto citado ("ID: 123")
- *   2) Si no lo hay, busca "TAREA <número>"
- *   3) Si tampoco, devuelve quotedMessage.id._serialized para buscar en originalMsgId
+ * saveFeedbackRecord - Persiste un array completo de registros de feedback
+ * @param {string|number} incidenceId
+ * @param {Array<Object>} history  Array de registros de feedback
  */
-async function extractFeedbackIdentifier(quotedMessage) {
-  const text = quotedMessage.body;
-
-  // 1) Intentar extraer "ID: 123"
-  let match = text.match(/ID:\s*(\d+)/i);
-  if (match) {
-    return match[1];
-  }
-
-  // 2) Intentar extraer "TAREA <número>"
-  match = text.match(/TAREA\s*[:\s]\s*(\d+)/i);
-  if (match) {
-    return match[1];
-  }
-
-  // 3) Fallback: usar el identificador interno de Whatsapp
-  if (quotedMessage.id && quotedMessage.id._serialized) {
-    return quotedMessage.id._serialized;
-  }
-
-  return null;
+async function saveFeedbackRecord(incidenceId, history) {
+  await new Promise(res =>
+    incidenceDB.updateFeedbackHistory(incidenceId, history, res)
+  );
 }
 
 /**
- * requestFeedback - Procesa la solicitud de feedback citando el mensaje original
+ * requestFeedback - Detecta y procesa una solicitud de feedback en un mensaje
+ *
+ * @param {import('whatsapp-web.js').Client} client
+ * @param {import('whatsapp-web.js').Message} message
  */
 async function requestFeedback(client, message) {
-  // Obtener mensaje citado y chat de origen
-  const quoted     = await message.getQuotedMessage();
+  // 1) Obtener chat de quien envía el mensaje (originador)
   const originChat = await message.getChat();
 
-  // Extraer identificador (ID numérico o messageId)
-  const identifier = await extractFeedbackIdentifier(quoted);
-  if (!identifier) {
-    await originChat.sendMessage('❌ No pude extraer el identificador de la incidencia citada.');
+  // 2) Extraer texto normalizado del mensaje para detectar si es solicitud
+  const text = normalizeText(message.body);
+  const { frases = [], palabras = [] } = client.keywordsData.identificadores.retro || {};
+  const isPhrase = frases.some(p => text.includes(normalizeText(p)));
+  const words = new Set(text.split(/\s+/));
+  const isWord = palabras.some(w => words.has(normalizeText(w)));
+  if (!isPhrase && !isWord) {
+    // No es solicitud de feedback
     return;
   }
 
-  // Determinar incidencia en BD:
-  // - Si identifier es sólo dígitos, lo tratamos como id interno
-  // - Si no, lo buscamos en originalMsgId
-  let inc;
-  if (/^\d+$/.test(identifier)) {
-    inc = await new Promise((res, rej) =>
-      incidenceDB.getIncidenciaById(identifier, (err, row) => err ? rej(err) : res(row))
-    );
-  } else {
-    inc = await incidenceDB.buscarIncidenciaPorOriginalMsgIdAsync(identifier);
+  // 3) Extraer ID de la incidencia citada
+  const quoted = await message.getQuotedMessage();
+  const incidenciaId = await extractIdentifier(quoted);
+  if (!incidenciaId) {
+    await originChat.sendMessage('❌ No pude identificar el ID de la tarea.');
+    return;
   }
+
+  // 4) Obtener la incidencia de la base de datos
+  const inc = await new Promise((res, rej) =>
+    incidenceDB.getIncidenciaById(incidenciaId, (err, row) => err ? rej(err) : res(row))
+  );
   if (!inc) {
-    await originChat.sendMessage(`❌ No se encontró la incidencia para "${identifier}".`);
+    await originChat.sendMessage(`❌ Incidencia ID ${incidenciaId} no encontrada.`);
     return;
   }
 
-  // Validación: si ya está cancelada, no pedimos feedback
-  if (inc.estado.toLowerCase() === 'cancelada') {
-    await originChat.sendMessage('❌ La incidencia está cancelada y no se puede solicitar feedback.');
-    return;
-  }
-
-  // Enviar la solicitud a cada equipo destino
+  // 5) Enviar solicitud a cada grupo destino
   const teams = inc.categoria.split(',').map(c => c.trim().toLowerCase());
   for (const team of teams) {
     const groupId = config.destinoGrupos[team];
     if (!groupId) continue;
-    const chat = await client.getChatById(groupId);
-    await chat.sendMessage(
-      `📝 *SOLICITUD DE RETROALIMENTACIÓN PARA LA TAREA ${inc.id}:*\n\n` +
+    const destChat = await client.getChatById(groupId);
+    await destChat.sendMessage(
+      `📝 *SOLICITUD DE RETROALIMENTACIÓN*\n\n` +
+      `*ID:* ${incidenciaId}\n` +
+      `*Categoría:* ${team.toUpperCase()}\n\n` +
       `${inc.descripcion}\n\n` +
       `_Por favor, respondan citando este mensaje con su retroalimentación._`
     );
   }
 
-  // Confirmar al emisor
-  await originChat.sendMessage(`✅ Solicitud de feedback enviada para la incidencia ID ${inc.id}.`);
+  // 6) Confirmar en el grupo origen
+  await originChat.sendMessage(
+    `✅ Solicitud de feedback enviada para la incidencia ID ${incidenciaId}.`
+  );
 }
 
 /**
- * handleTeamResponse - Cuando un equipo responde citando la solicitud,
- * si usa palabras de confirmación lanza processConfirmation;
- * en otro caso, guarda feedback y notifica.
+ * handleTeamResponse - Procesa la respuesta de un equipo (feedback o confirmación parcial)
+ * y persiste un registro en feedbackHistory, luego notifica al grupo de origen, al emisor del feedback,
+ * al usuario que reportó originalmente la incidencia y confirma en el grupo destino.
+ *
+ * @param {import('whatsapp-web.js').Client} client
+ * @param {import('whatsapp-web.js').Message} message
  */
 async function handleTeamResponse(client, message) {
+  // 1) Extraer ID desde el mensaje citado
   if (!message.hasQuotedMsg) return;
+  const quoted = await message.getQuotedMessage();
+  const incidenciaId = await extractIdentifier(quoted);
+  if (!incidenciaId) return;
 
-  // 0) Detectar si es un mensaje de confirmación (e.g. "listo", "confirmo", "finalizado", "ok") 
-  const textNorm = normalizeText(message.body);
-  const confData = client.keywordsData.respuestas.confirmacion || {};
-  const isConfirmPhrase = (confData.frases || []).some(f => textNorm.includes(normalizeText(f)));
-  const isConfirmWord   = (confData.palabras || []).some(w => new Set(textNorm.split(/\s+/)).has(normalizeText(w)));
-  if (isConfirmPhrase || isConfirmWord) {
-    // Derivamos al processConfirmation que maneja el cierre de la incidencia :contentReference[oaicite:0]{index=0}
-    await processConfirmation(client, message);
-    return;
-  }
-
-  // 1) Extraer identificador de la incidencia
-  const quoted     = await message.getQuotedMessage();
-  const identifier = await extractFeedbackIdentifier(quoted);
-  if (!identifier) return;
-
-  // 2) Localizar incidencia en BD (por ID numérico o originalMsgId)
-  let inc;
-  if (/^\d+$/.test(identifier)) {
-    inc = await new Promise((res, rej) =>
-      incidenceDB.getIncidenciaById(identifier, (err, row) => err ? rej(err) : res(row))
-    );
-  } else {
-    inc = await incidenceDB.buscarIncidenciaPorOriginalMsgIdAsync(identifier);
-  }
+  // 2) Cargar incidencia
+  const inc = await new Promise((res, rej) =>
+    incidenceDB.getIncidenciaById(incidenciaId, (err, row) => err ? rej(err) : res(row))
+  );
   if (!inc) return;
 
-  // 3) Determinar equipo según el grupo
-  const groupChat = await message.getChat();
-  const chatId    = groupChat.id._serialized;
-  let equipo      = '';
+  // 3) Determinar equipo
+  const chat   = await message.getChat();
+  const chatId = chat.id._serialized;
+  let equipo   = '';
   if (chatId === config.groupBotDestinoId)         equipo = 'it';
   else if (chatId === config.groupMantenimientoId) equipo = 'man';
   else if (chatId === config.groupAmaId)           equipo = 'ama';
-  if (!equipo) return;
 
-  // 4) Construir y persistir registro de feedback
-  const record = {
+  // 4) Crear registro
+  const now = new Date().toISOString();
+  let history = [];
+  try {
+    history = JSON.parse(inc.feedbackHistory || '[]');
+  } catch {}
+  history.push({
     usuario:    message.author || message.from,
     equipo,
     comentario: message.body,
-    fecha:      new Date().toISOString(),
+    fecha:      now,
     tipo:       'feedbackrespuesta'
-  };
-  await new Promise(res =>
-    incidenceDB.updateFeedbackHistory(inc.id, record, res)
-  );
+  });
 
-  // 5) Notificar al creador de la incidencia
+  // 5) Persistir en la base de datos
+  await saveFeedbackRecord(incidenciaId, history);
+
+  // 6) Formatear mensaje de feedback
+  const teamName  = equipo.toUpperCase();
+  const tareaText = inc.descripcion;
+  const respuesta = message.body;
+
+  const feedbackMsg =
+    `💬 *Feedback recibido (ID ${incidenciaId}):*\n` +
+    `✍️ *Tarea*:\n${tareaText}\n\n` +
+    `🗣️ *${teamName} responde:*\n${respuesta}`;
+
+  // 7) Notificar al grupo origen
   const originChat = await client.getChatById(inc.grupoOrigen);
-  await originChat.sendMessage(
-    `💬 *Feedback recibido* (ID ${inc.id}) de *${equipo.toUpperCase()}*:\n\n${message.body}`
-  );
+  await originChat.sendMessage(feedbackMsg);
 
-  // 6) Confirmar en el grupo destino
-  const senderId = message.author || message.from;
-  const userRec  = getUser(senderId);
-  const displayName = userRec
-    ? `${userRec.nombre} (${userRec.cargo})`
-    : senderId;
-  await groupChat.sendMessage(
-    `✅ Retroalimentación enviada a ${displayName}\n\nGracias`
-  );
+  // 8) Notificar al emisor del feedback (quien envió el mensaje)
+  const sender     = message.author || message.from;
+  const senderChat = await client.getChatById(sender);
+  await senderChat.sendMessage(feedbackMsg);
+
+  // 9) Notificar al usuario que reportó la incidencia originalmente (reportadoPor)
+  const reporterJid = inc.reportadoPor;
+  let reporterName  = reporterJid;
+  if (reporterJid) {
+    const userRec = getUser(reporterJid);
+    if (userRec) {
+      reporterName = `${userRec.nombre} (${userRec.cargo})`;
+    }
+    try {
+      const reporterChat = await client.getChatById(reporterJid);
+      await reporterChat.sendMessage(feedbackMsg);
+    } catch (err) {
+      console.error(`⚠️ No se pudo notificar al reportero JID ${reporterJid}:`, err);
+    }
+  }
+
+  // 10) Confirmación en el grupo destino donde se envió el feedback
+  const destinatario = reporterJid
+    ? reporterName
+    : inc.reportadoPor;
+
+  const confirmationMsg =
+    `💬 Feedback enviado (ID ${incidenciaId}):\n` +
+    `Destinatario:\n` +
+    `👤 ${destinatario}`;
+
+  await chat.sendMessage(confirmationMsg);
 }
+
+/**
+ * handleOriginResponse - Procesa la respuesta del originador después de feedback
+ * (comentario adicional), y persiste el registro
+ *
+ * @param {import('whatsapp-web.js').Client} client
+ * @param {import('whatsapp-web.js').Message} message
+ */
+async function handleOriginResponse(client, message) {
+  // 1) Extraer ID desde el mensaje citado
+  if (!message.hasQuotedMsg) return;
+  const quoted = await message.getQuotedMessage();
+  const incidenciaId = await extractIdentifier(quoted);
+  if (!incidenciaId) return;
+
+  // 2) Cargar incidencia
+  const inc = await new Promise((res, rej) =>
+    incidenceDB.getIncidenciaById(incidenciaId, (err, row) => err ? rej(err) : res(row))
+  );
+  if (!inc) return;
+
+  // 3) Crear registro de tipo feedbackrespuesta (comentario del originador)
+  const now = new Date().toISOString();
+  let history = [];
+  try {
+    history = JSON.parse(inc.feedbackHistory || '[]');
+  } catch {}
+  history.push({
+    usuario:    message.author || message.from,
+    equipo:     'origin',
+    comentario: message.body,
+    fecha:      now,
+    tipo:       'feedbackrespuesta'
+  });
+
+  // 4) Persistir en la base de datos
+  await saveFeedbackRecord(incidenciaId, history);
+
+  // 5) Confirmar al originador
+  const originChat = await message.getChat();
+  await originChat.sendMessage(`✅ Tu comentario ha sido registrado para la incidencia ID ${incidenciaId}.`);
+}
+
 module.exports = {
-  extractFeedbackIdentifier,
   requestFeedback,
-  handleTeamResponse
+  handleTeamResponse,
+  handleOriginResponse,
+  saveFeedbackRecord
 };

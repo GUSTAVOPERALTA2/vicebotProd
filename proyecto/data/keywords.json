@@ -17,7 +17,10 @@
         "fldsmdfsr",
         "teléfono",
         "controles",
-        "sistemas"
+        "sistemas",
+        "servidor",
+        "musica",
+        "ap"
       ],
       "frases": [
         "problema en el sistema",

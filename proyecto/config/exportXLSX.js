@@ -212,50 +212,53 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
   });
 
-  // 4) Hoja Feedback
+  // 5) Hoja Feedback
   const fb = workbook.addWorksheet('Feedback');
   fb.getRow(1).height = 80;
   if (fs.existsSync(logoPath)) {
     const logoId2 = workbook.addImage({ filename: logoPath, extension: 'png' });
     fb.addImage(logoId2, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 } });
   }
-  fb.mergeCells(1, 1, 1, 5);
+  fb.mergeCells(1, 1, 1, 4);
   const fbHdr = fb.getCell('C1');
   fbHdr.value = `REPORTE DE INCIDENCIAS ${headerText}`;
   fbHdr.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
   fbHdr.alignment = { horizontal: 'center', vertical: 'middle' };
   fbHdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC7722' } };
-
   fb.columns = [
     { header: 'Incidencia ID', key: 'incidenciaId', width: 10 },
-    { header: 'Equipo',        key: 'equipo',      width: 15 },
-    { header: 'Usuario',       key: 'usuario',     width: 25 },
-    { header: 'Comentario',    key: 'comentario',  width: 50 },
-    { header: 'Fecha',         key: 'fecha',       width: 20 }
+    { header: 'Equipo',        key: 'equipo',       width: 15 },
+    { header: 'Usuario',       key: 'usuario',      width: 30 }, // <- Aquí cambiaremos para nombre y cargo
+    { header: 'Comentario',    key: 'comentario',   width: 50 },
+    { header: 'Fecha',         key: 'fecha',        width: 20 }
   ];
   fb.getRow(2).values = ['Incidencia ID', 'Equipo', 'Usuario', 'Comentario', 'Fecha'];
   fb.getRow(2).font = { bold: true };
   fb.views = [{ state: 'frozen', ySplit: 2 }];
 
+  // Rellenar filas:
   rows.forEach(r => {
-    let history = [];
     try {
-      history = JSON.parse(r.feedbackHistory || '[]');
-    } catch {}
+      // Por cada registro de feedback en JSON:
+      JSON.parse(r.feedbackHistory || '[]').forEach(rec => {
+        // 👉 Aquí obtenemos el usuario con nombre y cargo:
+        let displayedUser = rec.usuario;
+        const userRec = getUser(rec.usuario);
+        if (userRec) {
+          displayedUser = `${userRec.nombre} (${userRec.cargo})`;
+        }
 
-    // Incluir únicamente los registros de tipo 'feedbackrespuesta'
-    history
-      .filter(rec => rec.tipo === 'feedbackrespuesta')
-      .forEach(rec => {
         fb.addRow({
           incidenciaId: r.id,
-          equipo:      rec.equipo?.toUpperCase(),
-          usuario:     rec.usuario,
-          comentario:  rec.comentario,
-          fecha:       rec.fecha ? formatDate(rec.fecha) : ''
+          equipo:       rec.equipo?.toUpperCase(),
+          usuario:      displayedUser,    // <-- Antes era rec.usuario; ahora usamos nombre y cargo
+          comentario:   rec.comentario,
+          fecha:        rec.fecha ? formatDate(rec.fecha) : ''
         });
       });
+    } catch {}
   });
+
 
   // 5) Guardar archivo con filtros en nombre
   let filename = `incidencias_${ts}`;
