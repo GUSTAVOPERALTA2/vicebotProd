@@ -16,7 +16,11 @@
         "control",
         "fldsmdfsr",
         "teléfono",
-        "controles"
+        "controles",
+        "sistemas",
+        "servidor",
+        "musica",
+        "ap"
       ],
       "frases": [
         "problema en el sistema",
@@ -44,9 +48,13 @@
         "hipoalergénico",
         "bote de basura",
         "almohada",
-        "almohada sintética"
+        "almohada sintética",
+        "toalla"
       ],
-      "frases": []
+      "frases": [
+        "turn down",
+        "ama de llaves"
+      ]
     },
     "man": {
       "palabras": [
