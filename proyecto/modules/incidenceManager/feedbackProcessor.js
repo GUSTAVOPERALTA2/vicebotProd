@@ -77,97 +77,99 @@ async function requestFeedback(client, message) {
 }
 
 /**
- * handleTeamResponse - Procesa la respuesta de un equipo (feedback o confirmación parcial)
- * y persiste un registro en feedbackHistory, luego notifica al grupo de origen, al emisor del feedback,
- * al usuario que reportó originalmente la incidencia y confirma en el grupo destino.
+ * handleTeamResponse - Procesa la respuesta de un equipo (confirmación o comentario)
+ * y persiste un registro en feedbackHistory. Luego notifica UNA sola vez en el chat de origen.
  *
  * @param {import('whatsapp-web.js').Client} client
  * @param {import('whatsapp-web.js').Message} message
  */
 async function handleTeamResponse(client, message) {
-  // 1) Extraer ID desde el mensaje citado
+  // 1) Si no hay mensaje citado, salimos
   if (!message.hasQuotedMsg) return;
-  const quoted = await message.getQuotedMessage();
-  const incidenciaId = await extractIdentifier(quoted);
-  if (!incidenciaId) return;
 
-  // 2) Cargar incidencia
-  const inc = await new Promise((res, rej) =>
-    incidenceDB.getIncidenciaById(incidenciaId, (err, row) => err ? rej(err) : res(row))
-  );
+  // 2) Extraer ID desde el mensaje citado (después normalizamos y quitamos asteriscos)
+  const quoted = await message.getQuotedMessage();
+  const rawQuoted = quoted.body.replace(/\*/g, '').trim();
+  const match = rawQuoted.match(/ID:\s*(\d+)/i);
+  if (!match) return;
+  const incidenciaId = match[1];
+
+  // 3) Cargar la incidencia de la base de datos
+  let inc;
+  try {
+    inc = await new Promise((resolve, reject) =>
+      incidenceDB.getIncidenciaById(incidenciaId, (err, row) => (err ? reject(err) : resolve(row)))
+    );
+  } catch (err) {
+    console.error('❌ Error al obtener la incidencia en handleTeamResponse:', err);
+    return;
+  }
   if (!inc) return;
 
-  // 3) Determinar equipo
-  const chat   = await message.getChat();
-  const chatId = chat.id._serialized;
-  let equipo   = '';
+  // 4) Determinar de qué equipo viene la respuesta
+  const chat    = await message.getChat();
+  const chatId  = chat.id._serialized;
+  let equipo    = '';
   if (chatId === config.groupBotDestinoId)         equipo = 'it';
   else if (chatId === config.groupMantenimientoId) equipo = 'man';
   else if (chatId === config.groupAmaId)           equipo = 'ama';
+  else {
+    // Si no coincide con ninguno de los grupos destino, salimos
+    return;
+  }
 
-  // 4) Crear registro
+  // 5) Construir el registro de “feedbackrespuesta” para agregar a feedbackHistory
   const now = new Date().toISOString();
   let history = [];
   try {
-    history = JSON.parse(inc.feedbackHistory || '[]');
-  } catch {}
-  history.push({
+    history = typeof inc.feedbackHistory === 'string'
+      ? JSON.parse(inc.feedbackHistory)
+      : inc.feedbackHistory || [];
+  } catch {
+    history = [];
+  }
+
+  const nuevoRegistro = {
     usuario:    message.author || message.from,
     equipo,
     comentario: message.body,
     fecha:      now,
     tipo:       'feedbackrespuesta'
-  });
+  };
+  history.push(nuevoRegistro);
 
-  // 5) Persistir en la base de datos
-  await saveFeedbackRecord(incidenciaId, history);
-
-  // 6) Formatear mensaje de feedback
-  const teamName  = equipo.toUpperCase();
-  const tareaText = inc.descripcion;
-  const respuesta = message.body;
-
-  const feedbackMsg =
-    `💬 *Feedback recibido (ID ${incidenciaId}):*\n` +
-    `✍️ *Tarea*:\n${tareaText}\n\n` +
-    `🗣️ *${teamName} responde:*\n${respuesta}`;
-
-  // 7) Notificar al grupo origen
-  const originChat = await client.getChatById(inc.grupoOrigen);
-  await originChat.sendMessage(feedbackMsg);
-
-  // 8) Notificar al emisor del feedback (quien envió el mensaje)
-  const sender     = message.author || message.from;
-  const senderChat = await client.getChatById(sender);
-  await senderChat.sendMessage(feedbackMsg);
-
-  // 9) Notificar al usuario que reportó la incidencia originalmente (reportadoPor)
-  const reporterJid = inc.reportadoPor;
-  let reporterName  = reporterJid;
-  if (reporterJid) {
-    const userRec = getUser(reporterJid);
-    if (userRec) {
-      reporterName = `${userRec.nombre} (${userRec.cargo})`;
-    }
-    try {
-      const reporterChat = await client.getChatById(reporterJid);
-      await reporterChat.sendMessage(feedbackMsg);
-    } catch (err) {
-      console.error(`⚠️ No se pudo notificar al reportero JID ${reporterJid}:`, err);
-    }
+  // 6) Persistir el historial actualizado en la BD (solo una llamada)
+  try {
+    await new Promise(res => incidenceDB.updateFeedbackHistory(incidenciaId, history, res));
+  } catch (err) {
+    console.error('❌ Error al actualizar feedbackHistory:', err);
+    // Si falla la persistencia, salimos sin notificar
+    return;
   }
 
-  // 10) Confirmación en el grupo destino donde se envió el feedback
-  const destinatario = reporterJid
-    ? reporterName
-    : inc.reportadoPor;
+  // 7) UNA SOLA NOTIFICACIÓN al grupo de origen
+  try {
+    const originChat = await client.getChatById(inc.grupoOrigen);
+    const teamName    = equipo.toUpperCase();
+    const userRec     = getUser(message.author || message.from);
+    const whoName     = userRec ? `${userRec.nombre} (${userRec.cargo})` : (message.author || message.from);
 
-  const confirmationMsg =
-    `💬 Feedback enviado (ID ${incidenciaId}):\n` +
-    `Destinatario:\n` +
-    `👤 ${destinatario}`;
+    // Construimos el bloque tal como se solicitó:
+    // 💬 Feedback recibido (ID {id}):
+    // ✍️ *Tarea*:
+    // {tarea original}
+    //
+    // 🗣️ *{IT|MAN|AMA} responde:*
+    // {comentario}
+    const detailBlock =
+      `💬 *Feedback recibido (ID ${incidenciaId}):*\n` +
+      `✍️ *Tarea*: \n${inc.descripcion}\n\n` +
+      `🗣️ *${teamName} responde:* \n${message.body}`;
 
-  await chat.sendMessage(confirmationMsg);
+    await originChat.sendMessage(detailBlock);
+  } catch (err) {
+    console.error('❌ Error al notificar feedback en grupo origen:', err);
+  }
 }
 
 /**

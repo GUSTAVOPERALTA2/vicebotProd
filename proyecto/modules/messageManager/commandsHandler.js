@@ -539,49 +539,77 @@ if (normalizedBody.startsWith('/generarreporte')) {
     return true;
   }
 
-  // Comando: /cancelarTarea <id>
+  // Comando: /cancelarTarea <id> (alias: /cancelarIncidencia <id>)
   if (normalizedBody.startsWith('/cancelartarea') || normalizedBody.startsWith('/cancelarincidencia')) {
-    // Se permite que el usuario que reportó la incidencia, o un admin, pueda cancelarla
+    // Se permite cancelar si el usuario es el que reportó la incidencia o es admin
     const parts = body.split(' ');
     if (parts.length < 2) {
       await chat.sendMessage("Formato inválido. Uso: /cancelarTarea <id>");
       return true;
     }
     const incId = parts[1].trim();
-    // Obtenemos la incidencia para validar su existencia y que el usuario tenga permiso
-    incidenceDB.getIncidenciaById(incId, (err, incidencia) => {
+
+    // Obtenemos la incidencia para validar permisos
+    incidenceDB.getIncidenciaById(incId, async (err, incidencia) => {
       if (err || !incidencia) {
-        chat.sendMessage("No se encontró la incidencia con ese ID.");
-      } else {
-        // Permitir cancelar si el usuario es el reportante o un admin
-        const currentUser = getUser(senderId);
-        if (incidencia.reportadoPor !== senderId && (!currentUser || currentUser.rol !== 'admin')) {
-          chat.sendMessage("No tienes permisos para cancelar esta incidencia.");
-        } else if (incidencia.estado !== "pendiente") {
-          chat.sendMessage("*La incidencia no se puede cancelar porque no está en estado pendiente.*");
-        } else {
-          // Procedemos a cancelar la incidencia
-          incidenceDB.cancelarIncidencia(incId, (err) => {
-            if (err) {
-              chat.sendMessage("Error al cancelar la incidencia.");
-            } else {
-              chat.sendMessage(`La incidencia con ID ${incId} ha sido cancelada.`);
-              // Opcional: notificar en el grupo principal
-              client.getChatById(config.groupPruebaId)
-                .then(mainGroupChat => {
-                  mainGroupChat.sendMessage(`La incidencia con ID ${incId} ha sido cancelada por el usuario ${currentUser ? currentUser.nombre : senderId}.`);
-                })
-                .catch(err => {
-                  console.error("Error al notificar cancelación en el grupo principal:", err);
-                });
-            }
-          });
-        }
+        await chat.sendMessage("No se encontró la incidencia con ese ID.");
+        return;
       }
+
+      // Permitir cancelar si el usuario es el reportante o un admin
+      const currentUser = getUser(senderId);
+      if (incidencia.reportadoPor !== senderId && (!currentUser || currentUser.rol !== 'admin')) {
+        await chat.sendMessage("No tienes permisos para cancelar esta incidencia.");
+        return;
+      } else if (incidencia.estado !== "pendiente") {
+        await chat.sendMessage("*La incidencia no se puede cancelar porque no está en estado pendiente.*");
+        return;
+      }
+
+      // Procedemos a cancelar la incidencia
+      incidenceDB.cancelarIncidencia(incId, async (err) => {
+        if (err) {
+          await chat.sendMessage("Error al cancelar la incidencia.");
+        } else {
+          // Usuario que realiza la cancelación
+          const who = currentUser
+            ? `${currentUser.nombre} (${currentUser.cargo})`
+            : senderId;
+
+          // 1) Mensaje en el chat origen (donde se ejecutó el comando)
+          await chat.sendMessage(`🤖✅ *La incidencia ID: ${incId} ha sido cancelada por ${who}*`);
+
+          // 2) Notificar a cada grupo destino según categoría
+          const cats = incidencia.categoria.split(',').map(c => c.trim().toLowerCase());
+          for (let cat of cats) {
+            const grpId = config.destinoGrupos[cat];
+            if (grpId) {
+              try {
+                const destChat = await client.getChatById(grpId);
+                await destChat.sendMessage(
+                  `🤖✅ *La incidencia ID: ${incId} ha sido cancelada por ${who}* \n\n` +
+                  `*Descripción:* ${incidencia.descripcion}`
+                );
+              } catch (e) {
+                console.error(`Error notificando cancelación al grupo destino ${grpId}:`, e);
+              }
+            }
+          }
+
+          // 3) Notificar en el grupo principal de incidencias (si existiera)
+          try {
+            const mainGroupChat = await client.getChatById(config.groupPruebaId);
+            await mainGroupChat.sendMessage(
+              `🤖✅ *La incidencia ID: ${incId} ha sido cancelada por ${who}* `
+            );
+          } catch (e) {
+            console.error("Error al notificar cancelación en el grupo principal:", e);
+          }
+        }
+      });
     });
     return true;
   }
- 
   // Comando: /tareaDetalles <id>
   if (normalizedBody.startsWith('/tareadetalles')) {
     const parts = body.split(' ');
@@ -596,6 +624,9 @@ if (normalizedBody.startsWith('/generarreporte')) {
       } else if (!row) {
         await chat.sendMessage(`No se encontró ninguna incidencia con ID ${incId}.`);
       } else {
+        // ---------------------------------------------------
+        // Construimos detailMessage con TODO el texto (sin enviar todavía)
+        // ---------------------------------------------------
         let detailMessage = `*DETALLES DE LA INCIDENCIA (ID: ${row.id}):*\n\n\n`;
         detailMessage += `🖼️ *Descripción:*\n ${row.descripcion}\n\n`;
         const user = getUser(row.reportadoPor);
@@ -608,9 +639,11 @@ if (normalizedBody.startsWith('/generarreporte')) {
         detailMessage += `🔷 *Estado:*\n ${row.estado}\n\n`;
         detailMessage += `👷‍♀️ *Categoría:*\n ${row.categoria}\n\n`;
         detailMessage += `🆎 *Grupo de Origen:*\n ${row.grupoOrigen}\n\n`;
-        detailMessage += row.media ? "🎞️ *Media:*\n [Adjunta]" : "*Media:*\n No hay";
-      
-        // Si la incidencia tiene múltiples categorías, agregar sección de comentarios
+        detailMessage += row.media
+          ? "🎞️ *Media:*\n [Adjunta]"
+          : "*Media:*\n No hay";
+
+        // Si la incidencia tiene múltiples categorías, agregamos sección de comentarios
         const categorias = row.categoria.split(',').map(c => c.trim().toLowerCase());
         if (categorias.length > 1) {
           let comentarios = "";
@@ -619,7 +652,9 @@ if (normalizedBody.startsWith('/generarreporte')) {
               const history = JSON.parse(row.feedbackHistory);
               const teamNames = { it: "IT", man: "MANTENIMIENTO", ama: "AMA" };
               categorias.forEach(cat => {
-                const record = history.filter(r => r.equipo && r.equipo.toLowerCase() === cat).pop();
+                const record = history
+                  .filter(r => r.equipo && r.equipo.toLowerCase() === cat)
+                  .pop();
                 const comentario = record && record.comentario ? record.comentario : "Sin comentarios";
                 comentarios += `${teamNames[cat] || cat.toUpperCase()}: ${comentario}\n`;
               });
@@ -631,27 +666,31 @@ if (normalizedBody.startsWith('/generarreporte')) {
           }
           detailMessage += `\n*Comentarios:*\n\n${comentarios}`;
         }
-        await chat.sendMessage(detailMessage);
+
+        // ---------------------------------------------------
+        // Ahora decidimos: si hay media → enviamos SOLO media con caption = detailMessage
+        //               si no hay media → enviamos SOLO detailMessage (texto)
+        // ---------------------------------------------------
         if (row.media) {
           const { MessageMedia } = require('whatsapp-web.js');
           let mimetype = 'image/png';
           let data = row.media;
-          
           try {
-            // row.media puede ser JSON.stringify({ data, mimetype })
+            // row.media pudo haberse guardado como JSON.stringify({ data, mimetype })
             const parsed = JSON.parse(row.media);
             if (parsed && parsed.data && parsed.mimetype) {
               data = parsed.data;
               mimetype = parsed.mimetype;
             }
-          } catch (_) {
-            // formato antiguo: row.media ya es base64, asumimos image/png
+          } catch {
+            // Si el parse falla, asumimos que row.media ya es base64 con mimetype image/png
           }
           const media = new MessageMedia(mimetype, data);
-          // Si quieres que el texto sea la leyenda del vídeo/imagen, usa:
           await chat.sendMessage(media, { caption: detailMessage });
-          //await chat.sendMessage(media);
+        } else {
+          await chat.sendMessage(detailMessage);
         }
+        // ---------------------------------------------------
       }
     });
     return true;

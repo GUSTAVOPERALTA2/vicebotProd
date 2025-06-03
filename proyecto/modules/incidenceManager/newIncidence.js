@@ -92,7 +92,8 @@ async function processNewIncidence(client, message) {
     async function forwardMessage(targetGroupId, label) {
       try {
         const targetChat = await client.getChatById(targetGroupId);
-        const caption = `*Nueva tarea recibida (ID: ${lastID}):*\n\n✅ *${message.body}*`;
+        const caption = `*Nueva tarea recibida (ID: ${lastID}):* \n\n`+
+        `✅ *${message.body}*`;
         if (mediaData) {
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });
@@ -113,7 +114,9 @@ async function processNewIncidence(client, message) {
     let teamList = teams.join(teams.length>1?' y ':'');
 
     // Responder al usuario
-    await chat.sendMessage(`*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`);
+    await chat.sendMessage(`🤖 *El mensaje se ha enviado al equipo:* \n\n` + 
+      `✅ ${teamList}\n\n` +
+      `*ID:* ${lastID}`);
 
     // Si es chat 1:1, notificar al grupo principal
     if (!chat.isGroup) {
