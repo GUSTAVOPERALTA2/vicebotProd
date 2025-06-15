@@ -63,10 +63,10 @@ async function requestFeedback(client, message) {
     const destChat = await client.getChatById(groupId);
     await destChat.sendMessage(
       `📝 *SOLICITUD DE RETROALIMENTACIÓN*\n\n` +
-      `*ID:* ${incidenciaId}\n` +
-      `*Categoría:* ${team.toUpperCase()}\n\n` +
       `${inc.descripcion}\n\n` +
-      `_Por favor, respondan citando este mensaje con su retroalimentación._`
+      `_Por favor, respondan citando este mensaje con su retroalimentación._ \n\n` +
+      `*ID:* ${incidenciaId}\n` +
+      `*Categoría:* ${team.toUpperCase()}`
     );
   }
 
@@ -113,6 +113,8 @@ async function handleTeamResponse(client, message) {
   if (chatId === config.groupBotDestinoId)         equipo = 'it';
   else if (chatId === config.groupMantenimientoId) equipo = 'man';
   else if (chatId === config.groupAmaId)           equipo = 'ama';
+  else if (chatId === config.groupRoomServiceId)  equipo = 'rs';
+  else if (chatId === config.groupSeguridadId)     equipo = 'seg';
   else {
     // Si no coincide con ninguno de los grupos destino, salimos
     return;
@@ -147,31 +149,38 @@ async function handleTeamResponse(client, message) {
     return;
   }
 
-  // 7) UNA SOLA NOTIFICACIÓN al grupo de origen
   try {
     const originChat = await client.getChatById(inc.grupoOrigen);
-    const teamName    = equipo.toUpperCase();
-    const userRec     = getUser(message.author || message.from);
-    const whoName     = userRec ? `${userRec.nombre} (${userRec.cargo})` : (message.author || message.from);
+    const teamName   = equipo.toUpperCase();
+    const userRec    = getUser(message.author || message.from);
+    const whoName    = userRec ? `${userRec.nombre} (${userRec.cargo})` : (message.author || message.from);
 
-    // Construimos el bloque tal como se solicitó:
-    // 💬 Feedback recibido (ID {id}):
-    // ✍️ *Tarea*:
-    // {tarea original}
-    //
-    // 🗣️ *{IT|MAN|AMA} responde:*
-    // {comentario}
     const detailBlock =
-      `💬 *Feedback recibido (ID ${incidenciaId}):*\n` +
+      `💬 *Feedback recibido (ID ${incidenciaId}):*\n\n` +
       `✍️ *Tarea*: \n${inc.descripcion}\n\n` +
       `🗣️ *${teamName} responde:* \n${message.body}`;
 
-    await originChat.sendMessage(detailBlock);
-  } catch (err) {
-    console.error('❌ Error al notificar feedback en grupo origen:', err);
-  }
-}
+    // 2. Notificar al grupo destino (desde donde se responde)
+    await chat.sendMessage(
+      `✅ *Respuesta enviada al emisor ${whoName} para la tarea ${incidenciaId}*`
+    );
 
+    // 3. Si fue reportado por DM, también responder directo al usuario
+    if (!inc.grupoOrigen.endsWith('@g.us')) {
+      try {
+        const userChat = await client.getChatById(inc.reportadoPor);
+        await userChat.sendMessage(detailBlock);
+        console.log(`📤 Feedback también enviado directamente a ${inc.reportadoPor}`);
+      } catch (e) {
+        console.error(`❌ No se pudo enviar el feedback al usuario ${inc.reportadoPor}:`, e);
+      }
+    }
+
+      console.log(`✅ Notificación enviada al grupo origen ${inc.grupoOrigen} por ${whoName}`);
+    } catch (err) {
+      console.error('❌ Error al notificar feedback en grupo origen:', err);
+    }
+  }
 /**
  * handleOriginResponse - Procesa la respuesta del originador después de feedback
  * (comentario adicional), y persiste el registro
@@ -211,7 +220,7 @@ async function handleOriginResponse(client, message) {
 
   // 5) Confirmar al originador
   const originChat = await message.getChat();
-  await originChat.sendMessage(`✅ Tu comentario ha sido registrado para la incidencia ID ${incidenciaId}.`);
+  await originChat.sendMessage(`✅ *Tu comentario ha sido registrado para la incidencia ID ${incidenciaId}.* `);
 }
 
 module.exports = {

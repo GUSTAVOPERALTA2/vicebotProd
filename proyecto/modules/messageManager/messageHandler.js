@@ -25,15 +25,63 @@ async function handleMessage(client, message) {
     console.log('  • body:',         message.body);
     console.log('  • hasQuotedMsg:', message.hasQuotedMsg);
 
-    // =======================================
-    // 1) “DM + cita” A CUALQUIER MENSAJE CITADO
-    //    → extraer incidencia con extractIdentifier
-    //    → decidir acción: cancelar / confirmar / pedir feedback
-    // =======================================
+    const normalizedText = normalizeText(message.body || '');
+    const tokens = new Set(normalizedText.split(/\s+/));
+    const intents = client.keywordsData.intenciones || {};
+    const genRep = intents.generarReporte || {};
+    const frases = genRep.frases || [];
+    const palabras = genRep.palabras || [];
+
+    let activaReporte = false;
+    for (let frase of frases) {
+      if (normalizedText.includes(normalizeText(frase))) {
+        activaReporte = true;
+        break;
+      }
+    }
+    if (!activaReporte) {
+      for (let palabra of palabras) {
+        if (tokens.has(normalizeText(palabra))) {
+          activaReporte = true;
+          break;
+        }
+      }
+    }
+
+    const requiereVerbo = /(ver|genera|muéstrame|quiero|dame|necesito).*reporte/.test(normalizedText);
+if (activaReporte && requiereVerbo) {
+      const lowerMsg = normalizedText;
+      console.log('  → Activando reporte con frase:', lowerMsg);
+
+      const parts = [];
+      if (/(hoy|ahora|actual|del dia)/.test(lowerMsg)) parts.push('hoy');
+      if (/(pendiente|pendientes|falta|faltan|quedan)/.test(lowerMsg)) parts.push('pendiente');
+      if (/(completado|completados|completadas|finalizado|terminado|hecho)/.test(lowerMsg)) parts.push('completada');
+      if (/(cancelada|canceladas|anulada|anularon)/.test(lowerMsg)) parts.push('cancelada');
+      if (/(it|sistemas|soporte|tecnico)/.test(lowerMsg)) parts.push('it');
+      if (/(ama|limpieza|hskp|camarista)/.test(lowerMsg)) parts.push('ama');
+      if (/(room|room service|servicio de habitaciones|alimentos)/.test(lowerMsg)) parts.push('rs');
+      if (/(seguridad|guardia|proteccion)/.test(lowerMsg)) parts.push('seg');
+      if (/(mantenimiento|reparaciones|averia|tecnico)/.test(lowerMsg)) parts.push('man');
+
+      const generatedCommand = '/generarReporte ' + parts.join(' ');
+      message.body = generatedCommand;
+
+      console.log('  → Activando reporte con mensaje:', generatedCommand);
+    }
+
+    if (message.body && message.body.trim().startsWith('/')) {
+      console.log('→ Comando detectado:', message.body.trim());
+      if (await handleCommands(client, message)) {
+        console.log('    • Comando fue manejado por handleCommands');
+        return; // ✅ evita continuar a handleIncidence
+      }
+    }
+
     if (!isGroup && message.hasQuotedMsg) {
       const quoted    = await message.getQuotedMessage();
       const rawQuoted = quoted.body
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/\*/g, '')
         .toLowerCase()
         .trim();
@@ -42,12 +90,10 @@ async function handleMessage(client, message) {
       const normQuoted = normalizeText(rawQuoted);
       console.log('  → [DM + cita] normQuoted:', JSON.stringify(normQuoted));
 
-      // Extraer ID con el nuevo extractor (identificador único u originalMsgId)
       const incidenciaId = await extractIdentifier(quoted);
       console.log('    • [DM + cita] extractIdentifier devolvió:', incidenciaId);
 
       if (incidenciaId && /^\d+$/.test(incidenciaId)) {
-        // 1.A) Determinar si la respuesta contiene palabra/frase de CANCELACIÓN
         const responseText   = normalizeText(message.body);
         const responseTokens = new Set(responseText.split(/\s+/));
         const cancelKW       = client.keywordsData.cancelacion || {};
@@ -56,13 +102,11 @@ async function handleMessage(client, message) {
 
         if (isCancelWord || isCancelPhrase) {
           console.log('    • DM + cita → CANCELACIÓN detectada para ID', incidenciaId);
-          // Cancelación directa usando incidenceDB
           incidenceDB.cancelarIncidencia(incidenciaId, async err => {
             if (err) {
               console.error('❌ Error cancelando incidencia:', err);
               await chat.sendMessage(`❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
             } else {
-              // Obtener nombre y cargo desde users.json
               const sender = message.author || message.from;
               const user   = getUser(sender);
               const who    = user ? `${user.nombre}(${user.cargo})` : sender;
@@ -72,7 +116,6 @@ async function handleMessage(client, message) {
           return;
         }
 
-        // 1.B) Determinar si la respuesta contiene palabra/frase de CONFIRMACIÓN
         const confirmKW       = client.keywordsData.respuestas.confirmacion || {};
         const isConfirmWord   = (confirmKW.palabras || []).some(w => responseTokens.has(normalizeText(w)));
         const isConfirmPhrase = (confirmKW.frases   || []).some(f => responseText.includes(normalizeText(f)));
@@ -82,7 +125,6 @@ async function handleMessage(client, message) {
           return;
         }
 
-        // 1.C) Cualquier otro texto → SOLICITAR FEEDBACK
         console.log('    • DM + cita → SOLICITAR FEEDBACK para ID', incidenciaId);
         await requestFeedback(client, message);
         return;
@@ -91,23 +133,15 @@ async function handleMessage(client, message) {
       console.log('    ✖️ DM + cita NO extrajo ID → seguir flujo normal');
     }
 
-    // =======================================
-    // 2) Cancelaciones genéricas (comando /cancelarTarea o keywords de cancelación)
-    // =======================================
     if (await processCancelationNewMethod(client, message)) {
       console.log('  → processCancelationNewMethod DETECTÓ cancelación genérica');
       return;
     }
 
-    // =======================================
-    // 3) “Grupo + cita” A CUALQUIER MENSAJE CITADO
-    //    → extraer incidenciaId con extractIdentifier
-    //    → decidir acción: cancelar / confirmar / feedback de equipo
-    // =======================================
     if (isGroup && message.hasQuotedMsg) {
       const quoted    = await message.getQuotedMessage();
       const rawQuoted = quoted.body
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/\*/g, '')
         .toLowerCase()
         .trim();
@@ -116,7 +150,6 @@ async function handleMessage(client, message) {
       const normQuoted = normalizeText(rawQuoted);
       console.log('  → [Grupo + cita] normQuoted:', JSON.stringify(normQuoted));
 
-      // Extraer ID con el nuevo extractor (identificador único u originalMsgId)
       const incidenciaId = await extractIdentifier(quoted);
       console.log('  → [Grupo + cita] extractIdentifier devolvió:', incidenciaId);
 
@@ -124,7 +157,6 @@ async function handleMessage(client, message) {
         const responseText   = normalizeText(message.body);
         const responseTokens = new Set(responseText.split(/\s+/));
 
-        // 3.A) ¿Cancela?
         const cancelKW3       = client.keywordsData.cancelacion || {};
         const isCancelWord3   = (cancelKW3.palabras || []).some(w => responseTokens.has(normalizeText(w)));
         const isCancelPhrase3 = (cancelKW3.frases   || []).some(f => responseText.includes(normalizeText(f)));
@@ -135,7 +167,6 @@ async function handleMessage(client, message) {
               console.error('❌ Error cancelando desde grupo:', err);
               await chat.sendMessage(`❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
             } else {
-              // Obtener nombre y cargo desde users.json
               const sender = message.author || message.from;
               const user   = getUser(sender);
               const who    = user ? `${user.nombre}(${user.cargo})` : sender;
@@ -145,7 +176,6 @@ async function handleMessage(client, message) {
           return;
         }
 
-        // 3.B) ¿Confirma?
         const confirmKW3       = client.keywordsData.respuestas.confirmacion || {};
         const isConfirmWord3   = (confirmKW3.palabras || []).some(w => responseTokens.has(normalizeText(w)));
         const isConfirmPhrase3 = (confirmKW3.frases || []).some(f => responseText.includes(normalizeText(f)));
@@ -155,7 +185,6 @@ async function handleMessage(client, message) {
           return;
         }
 
-        // 3.C) Feedback de equipo
         console.log('    • Grupo + cita → FEEDBACK DE EQUIPO para ID', incidenciaId);
         await handleTeamResponse(client, message);
         return;
@@ -164,20 +193,6 @@ async function handleMessage(client, message) {
       console.log('    ✖️ Grupo + cita NO extrajo ID válido → seguir flujo normal');
     }
 
-    // =======================================
-    // 4) Comandos (DM o grupo)
-    // =======================================
-    if (message.body && message.body.trim().startsWith('/')) {
-      console.log('  → Comando detectado:', message.body.trim());
-      if (await handleCommands(client, message)) {
-        console.log('    • Comando fue manejado por handleCommands');
-        return;
-      }
-    }
-
-    // =======================================
-    // 5) Incidencias nuevas o detalles sin cita
-    // =======================================
     console.log('  → Ninguna condición anterior, delegando a handleIncidence');
     await handleIncidence(client, message);
 

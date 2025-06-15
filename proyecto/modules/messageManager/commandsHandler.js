@@ -9,6 +9,7 @@ const incidenceDB = require('../incidenceManager/incidenceDB');
 const { exportXLSX } = require('../../config/exportXLSX');
 const { registerUser, getUser, loadUsers, saveUsers } = require('../../config/userManager');
 const { formatDate } = require('../../config/dateUtils');
+const { setgid } = require('process');
 
 async function handleCommands(client, message) {
   const chat = await message.getChat();
@@ -26,7 +27,7 @@ async function handleCommands(client, message) {
       "🌀🌀 *COMANDOS USUARIOS*🌀🌀 \n\n" +
       "🪪 */id* \n Muestra tu ID.\n\n" +
       "🆘 */ayuda* \n Muestra esta lista de comandos.\n\n" +
-      "✍️ */tareas <categoria>* \n Consulta incidencias de la categoría (it, ama, man).\n\n" +
+      "✍️ */tareas <categoria>* \n Consulta incidencias de la categoría (it, ama, man, seg, rs).\n\n" +
       "📅 */tareasFecha <YYYY-MM-DD>* \n Consulta incidencias de una fecha específica.\n\n" +
       "🗓️ */tareasRango <fechaInicio> <fechaFin>* \n Consulta incidencias en un rango de fechas.\n\n" +
       "📝 */tareasPendientes <categoria>* \n Muestra únicamente las incidencias pendientes.\n\n" +
@@ -37,9 +38,9 @@ async function handleCommands(client, message) {
       "📄 */generarReporte* \n Genera un reporte general con TODAS las incidencias.\n\n" +
       "📅 */generarReporte <fechaInicio> <FechaFinal>* \n Reporte por rango de fechas\n\n" +
       "⛳ */generarReporte <hoy>* \n Reporte de incidencias de hoy.\n\n" +
-      "👥 */generarReporte <it-ama-man>* \n Reporte de incidencias por categoria.\n\n" +
+      "👥 */generarReporte <it-ama-man-rs-seg>* \n Reporte de incidencias por categoria.\n\n" +
       "🚦 */generarReporte <completada-pendiente-cancelada>* \n Reporte de incidencias por estado.\n\n" +
-      "*PUEDES COMBIANAR LOS PARAMETROS A TU GUSTO*\n" +
+      "*PUEDES COMBINAR LOS PARAMETROS A TU GUSTO*\n" +
       "*EJEMPLO:* \n" +
       "/generarReporte hoy it completada\n\n";
 
@@ -62,6 +63,7 @@ async function handleCommands(client, message) {
       "*/addKeyword <categoria> <tipo> <entrada>* \n Agrega una nueva entrada.\n\n" +
       "*/editKeyword <categoria> <tipo> <oldEntry>|<newEntry>* \n Edita una entrada.\n\n" +
       "*/viewKeywords* \n Muestra las keywords guardadas.\n\n\n" +
+      "*/removeKeyword <categoria> <tipo> <entrada> \n Muestra las keywords guardadas.\n\n\n" +
       "*USERS*\n\n" +
       "*/registerUser <id> | <nombre-apellido> | <cargo> | <rol>* \n Registra un usuario.\n\n" +
       "*/editUser <id> | <nombre-apellido> | <cargo> | <rol>* \n Edita la información de un usuario.\n\n" +
@@ -152,7 +154,7 @@ if (normalizedBody.startsWith('/generarreporte')) {
     idx = 3;
   }
   // Capturar categorías y estados
-  const validCats = ['it', 'man', 'ama'];
+  const validCats = ['it', 'man', 'ama', 'rs', 'seg'];
   const validStats = ['pendiente', 'completada', 'cancelada'];
   const categories = [];
   const statuses = [];
@@ -385,12 +387,12 @@ if (normalizedBody.startsWith('/generarreporte')) {
       !normalizedBody.startsWith('/tareascompletadas')) {
     const parts = body.split(' ');
     if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. *Uso: /tareas <categoria> (it, ama, man)*");
+      await chat.sendMessage("Formato inválido. *Uso: /tareas <categoria> (it, ama, man, rs, seg)*");
       return true;
     }
     const categoria = parts[1].toLowerCase();
-    if (!['it', 'ama', 'man'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. *Usa: it, ama o man.*");
+    if (!['it', 'ama', 'man', 'seg', 'rs'].includes(categoria)) {
+      await chat.sendMessage("Categoría inválida. *Usa: it, ama, seg, rs o man.*");
       return true;
     }
     incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
@@ -476,12 +478,12 @@ if (normalizedBody.startsWith('/generarreporte')) {
   if (normalizedBody.startsWith('/tareaspendientes')) {
     const parts = body.split(' ');
     if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. Uso: /tareasPendientes <categoria> (it, ama, man)");
+      await chat.sendMessage("Formato inválido. Uso: /tareasPendientes <categoria> (it, ama, rs, seg, man)");
       return true;
     }
     const categoria = parts[1].toLowerCase();
-    if (!['it', 'ama', 'man'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. Usa: it, ama o man.");
+    if (!['it', 'ama', 'man', 'rs', 'seg'].includes(categoria)) {
+      await chat.sendMessage("Categoría inválida. Usa: it, rs, seg, ama o man.");
       return true;
     }
     incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
@@ -510,12 +512,12 @@ if (normalizedBody.startsWith('/generarreporte')) {
   if (normalizedBody.startsWith('/tareascompletadas')) {
     const parts = body.split(' ');
     if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. Uso: /tareasCompletadas <categoria> (it, ama, man)");
+      await chat.sendMessage("Formato inválido. Uso: /tareasCompletadas <categoria> (it, ama, rs, seg, man)");
       return true;
     }
     const categoria = parts[1].toLowerCase();
-    if (!['it', 'ama', 'man'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. Usa: it, ama o man.");
+    if (!['it', 'ama', 'man', 'seg', 'rs'].includes(categoria)) {
+      await chat.sendMessage("Categoría inválida. Usa: it, seg, rs, ama o man.");
       return true;
     }
     incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
@@ -650,7 +652,7 @@ if (normalizedBody.startsWith('/generarreporte')) {
           if (row.feedbackHistory) {
             try {
               const history = JSON.parse(row.feedbackHistory);
-              const teamNames = { it: "IT", man: "MANTENIMIENTO", ama: "AMA" };
+              const teamNames = { it: "IT", man: "MANTENIMIENTO", ama: "AMA", rs: "ROOMSERVICE", seg: "SEGURIDAD" };
               categorias.forEach(cat => {
                 const record = history
                   .filter(r => r.equipo && r.equipo.toLowerCase() === cat)
