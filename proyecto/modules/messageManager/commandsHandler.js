@@ -10,43 +10,62 @@ const { exportXLSX } = require('../../config/exportXLSX');
 const { registerUser, getUser, loadUsers, saveUsers } = require('../../config/userManager');
 const { formatDate } = require('../../config/dateUtils');
 const { setgid } = require('process');
+const {filtrarIncidencias} = require('../incidenceManager/incidenceDB');
+const { normalizeText} = require('../../config/stringUtils');
 
 async function handleCommands(client, message) {
   const chat = await message.getChat();
   const senderId = message.author ? message.author : message.from;
   const body = message.body ? message.body.trim() : "";
+  const parts = message.body.trim().split(/\s+/);
+  const command = parts[0].toLowerCase();
   
   // Normalizamos el comando a minúsculas para comparar
   const normalizedBody = body.toLowerCase();
   console.log(`Procesando comando: "${body}" desde: ${senderId}`);
 
-  // ------------------- Comandos para administradores -------------------
-  // Comando para usuarios: /ayuda (excluyendo /helpAdmin)
+  // Comando: /ayuda
   if (normalizedBody.startsWith('/ayuda') && !normalizedBody.startsWith('/helpadmin')) {
     const helpMessage =
-      "🌀🌀 *COMANDOS USUARIOS*🌀🌀 \n\n" +
-      "🪪 */id* \n Muestra tu ID.\n\n" +
-      "🆘 */ayuda* \n Muestra esta lista de comandos.\n\n" +
-      "✍️ */tareas <categoria>* \n Consulta incidencias de la categoría (it, ama, man, seg, rs).\n\n" +
-      "📅 */tareasFecha <YYYY-MM-DD>* \n Consulta incidencias de una fecha específica.\n\n" +
-      "🗓️ */tareasRango <fechaInicio> <fechaFin>* \n Consulta incidencias en un rango de fechas.\n\n" +
-      "📝 */tareasPendientes <categoria>* \n Muestra únicamente las incidencias pendientes.\n\n" +
-      "✅ */tareasCompletadas <categoria>* \n Muestra únicamente las incidencias completadas.\n\n" +
-      "❌ */cancelarTarea <id>* \n Cancelar incidencia. \n\n" +
-      "🔍 */tareaDetalles <id>* \n Muestra los detalles de una incidencia.\n\n\n" +
-      "🌀🌀🌀 *REPORTES* 🌀🌀🌀 \n\n" +
-      "📄 */generarReporte* \n Genera un reporte general con TODAS las incidencias.\n\n" +
-      "📅 */generarReporte <fechaInicio> <FechaFinal>* \n Reporte por rango de fechas\n\n" +
-      "⛳ */generarReporte <hoy>* \n Reporte de incidencias de hoy.\n\n" +
-      "👥 */generarReporte <it-ama-man-rs-seg>* \n Reporte de incidencias por categoria.\n\n" +
-      "🚦 */generarReporte <completada-pendiente-cancelada>* \n Reporte de incidencias por estado.\n\n" +
-      "*PUEDES COMBINAR LOS PARAMETROS A TU GUSTO*\n" +
-      "*EJEMPLO:* \n" +
-      "/generarReporte hoy it completada\n\n";
+  `¡Hola! 👋 Soy tu asistente de incidencias. Esto es lo que puedo hacer por ti:
 
-    await chat.sendMessage(helpMessage);
-    return true;
-  }
+  • **Ver tareas por categoría**  
+    – Ejemplo: “Muéstrame las tareas de IT”  
+    – Equivalente a: /tareas it
+
+  • **Ver tareas pendientes**  
+    – Ejemplo: “¿Qué tareas pendientes tiene mantenimiento?”  
+    – Equivalente a: /tareas pendiente man
+
+  • **Ver tareas completadas**  
+    – Ejemplo: “Muéstrame las tareas completadas de ama de llaves”  
+    – Equivalente a: /tareas completada ama
+
+  • **Buscar tareas de hoy**  
+    – Ejemplo: “¿Qué tareas hay de hoy?”  
+    – Equivalente a: /tareas hoy
+
+  • **Buscar por fecha o rango**  
+    – Ejemplo: “Tareas del 2025-06-01 al 2025-06-10”  
+    – Equivalente a: /tareas 2025-06-01:2025-06-10
+
+  • **Detalles de una tarea**  
+    – Ejemplo: “Dime los detalles de la tarea 12”  
+    – Equivalente a: /tareaDetalles 12
+
+  • **Cancelar una tarea**  
+    – Ejemplo: “Cancela la tarea 7”  
+    – Equivalente a: /cancelarTarea 7
+
+  • **Generar reportes**  
+    – Ejemplo: “Genera un reporte de hoy para IT completadas”  
+    – Equivalente a: /generarReporte hoy it completada
+
+  ¡Pruébame con palabras naturales o usando los comandos directos! 😊`;
+
+      await chat.sendMessage(helpMessage);
+      return true;
+    }
 
   // Comando para administradores: /helpadmin
   if (normalizedBody.startsWith('/helpadmin')) {
@@ -379,167 +398,61 @@ if (normalizedBody.startsWith('/generarreporte')) {
     return true;
   }
 
-  // ------------------- Comandos para incidencias -------------------
-  if (normalizedBody.startsWith('/tareas ') &&
-      !normalizedBody.startsWith('/tareasfecha') &&
-      !normalizedBody.startsWith('/tareasrango') &&
-      !normalizedBody.startsWith('/tareaspendientes') &&
-      !normalizedBody.startsWith('/tareascompletadas')) {
-    const parts = body.split(' ');
-    if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. *Uso: /tareas <categoria> (it, ama, man, rs, seg)*");
-      return true;
-    }
-    const categoria = parts[1].toLowerCase();
-    if (!['it', 'ama', 'man', 'seg', 'rs'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. *Usa: it, ama, seg, rs o man.*");
-      return true;
-    }
-    incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
-      if (err) {
-        chat.sendMessage("Error al consultar las incidencias.");
-      } else {
-        let summary = `*Incidencias para la categoría ${categoria.toUpperCase()}*:\n\n`;
-        if (!rows.length) {
-          summary += "No hay incidencias registradas en esta categoría.";
-        } else {
-          rows.forEach(row => {
-            summary += 
-            `\n🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻🔻\n\n`+
-            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
-          });
-        }
-        chat.sendMessage(summary);
+  // Comando: /tareas <categoria> (alias: /incidencias <categoria>)
+  if (normalizedBody.startsWith('/tareas')) {
+    const args = normalizedBody.split(/\s+/).slice(1); // quitar "/tareas"
+
+    let startDate = null;
+    let endDate = null;
+    let estado = null;
+    let categoria = null;
+
+    const estadosValidos = ['pendiente', 'completada', 'cancelada'];
+    const categoriasValidas = ['it', 'man', 'ama', 'rs', 'seg'];
+
+    const todayRaw = new Date();
+    const today = todayRaw.toISOString().split('T')[0];
+
+    for (const arg of args) {
+      if (arg === 'hoy') {
+        startDate = `${today}T00:00:00`;
+        endDate   = `${today}T23:59:59`;
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) {
+        startDate = `${arg}T00:00:00`;
+        endDate   = `${arg}T23:59:59`;
+      } else if (/^\d{4}-\d{2}-\d{2}:\d{4}-\d{2}-\d{2}$/.test(arg)) {
+        const [start, end] = arg.split(':');
+        startDate = `${start}T00:00:00`;
+        endDate   = `${end}T23:59:59`;
+      } else if (estadosValidos.includes(arg) && !estado) {
+        estado = arg;
+      } else if (categoriasValidas.includes(arg) && !categoria) {
+        categoria = arg;
       }
-    });
+    }
+
+    const filtros = { startDate, endDate, estado, categoria };
+    console.log('→ Filtros aplicados:', filtros);
+
+    const incidencias = await filtrarIncidencias(filtros);
+    if (!incidencias || incidencias.length === 0) {
+      await message.reply('📭 No se encontraron incidencias con esos filtros.');
+      return true;
+    }
+
+    const resumen = incidencias.map(inc => {
+      return `🔷 ID: *${inc.id}* | 📅 ${inc.fechaCreacion.slice(0,10)} | 📁 ${inc.categoria} | ` +
+            (inc.estado === 'pendiente'   ? '🟡 pendiente' :
+              inc.estado === 'completada'  ? '🛠 completada' :
+              inc.estado === 'cancelada'   ? '❌ cancelada' : inc.estado) +
+            `\n✏️ ${inc.descripcion}`;
+    }).join('\n\n');
+
+    await message.reply(`📋 *Tareas encontradas: ${incidencias.length}*\n\n${resumen}`);
     return true;
   }
- 
-  // Comando: /tareasfecha <YYYY-MM-DD>
-  if (normalizedBody.startsWith('/tareasfecha')) {
-    const parts = body.split(' ');
-    if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. Uso: /tareasFecha <YYYY-MM-DD>");
-      return true;
-    }
-    const date = parts[1].trim();
-    incidenceDB.getIncidenciasByDate(date, (err, rows) => {
-      if (err) {
-        chat.sendMessage("Error al consultar incidencias por fecha.");
-      } else {
-        let summary = `*Incidencias del ${date}*:\n\n`;
-        if (!rows.length) {
-          summary += "No hay incidencias registradas para esa fecha.";
-        } else {
-          rows.forEach(row => {
-            summary += 
-            `\n🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺🔺\n\n`+
-            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
-          });
-        }
-        chat.sendMessage(summary);
-      }
-    });
-    return true;
-  }
- 
-  // Comando: /tareasrango <fechaInicio> <fechaFin>
-  if (normalizedBody.startsWith('/tareasrango')) {
-    const parts = body.split(' ');
-    if (parts.length < 3) {
-      await chat.sendMessage("Formato inválido. Uso: /tareasRango <fechaInicio> <fechaFin> (YYYY-MM-DD)");
-      return true;
-    }
-    let fechaInicio = parts[1].trim();
-    let fechaFin = parts[2].trim();
-    fechaInicio = `${fechaInicio}T00:00:00.000Z`;
-    fechaFin = `${fechaFin}T23:59:59.999Z`;
-    incidenceDB.getIncidenciasByRange(fechaInicio, fechaFin, (err, rows) => {
-      if (err) {
-        chat.sendMessage("Error al consultar incidencias por rango.");
-      } else {
-        let summary = `*Incidencias entre ${parts[1]} y ${parts[2]}:*\n\n`;
-        if (!rows.length) {
-          summary += "No hay incidencias registradas en ese rango.";
-        } else {
-          rows.forEach(row => {
-            summary += 
-            `\n▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️\n\n`+
-            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n`;
-          });
-        }
-        chat.sendMessage(summary);
-      }
-    });
-    return true;
-  }
- 
-  // Comando: /tareaspendientes <categoria>
-  if (normalizedBody.startsWith('/tareaspendientes')) {
-    const parts = body.split(' ');
-    if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. Uso: /tareasPendientes <categoria> (it, ama, rs, seg, man)");
-      return true;
-    }
-    const categoria = parts[1].toLowerCase();
-    if (!['it', 'ama', 'man', 'rs', 'seg'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. Usa: it, rs, seg, ama o man.");
-      return true;
-    }
-    incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
-      if (err) {
-        chat.sendMessage("Error al consultar incidencias.");
-      } else {
-        // Filtramos sólo las que estén en estado "pendiente"
-        const pendingRows = rows.filter(r => r.estado === "pendiente");
-        let summary = `Incidencias pendientes en categoría ${categoria.toUpperCase()}:\n\n`;
-        if (!pendingRows.length) {
-          summary += "No hay incidencias pendientes en esta categoría.";
-        } else {
-          pendingRows.forEach(row => {
-            summary += 
-              `\n▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n` +
-              `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
-          });
-        }
-        chat.sendMessage(summary);
-      }
-    });
-    return true;
-  }
- 
-  // Comando: /tareascompletadas <categoria>
-  if (normalizedBody.startsWith('/tareascompletadas')) {
-    const parts = body.split(' ');
-    if (parts.length < 2) {
-      await chat.sendMessage("Formato inválido. Uso: /tareasCompletadas <categoria> (it, ama, rs, seg, man)");
-      return true;
-    }
-    const categoria = parts[1].toLowerCase();
-    if (!['it', 'ama', 'man', 'seg', 'rs'].includes(categoria)) {
-      await chat.sendMessage("Categoría inválida. Usa: it, seg, rs, ama o man.");
-      return true;
-    }
-    incidenceDB.getIncidenciasByCategory(categoria, (err, rows) => {
-      if (err) {
-        chat.sendMessage("Error al consultar incidencias.");
-      } else {
-        const compRows = rows.filter(r => r.estado === "completada");
-        let summary = `Incidencias completadas en categoría *${categoria.toUpperCase()}*:\n\n`;
-        if (!compRows.length) {
-          summary += "No hay incidencias completadas en esta categoría.";
-        } else {
-          compRows.forEach(row => {
-            summary += 
-            `\n▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️▪️\n\n`+
-            `*ID:* ${row.id} | *Estado:* ${row.estado} | *Descripción:* ${row.descripcion}\n\n`;
-          });
-        }
-        chat.sendMessage(summary);
-      }
-    });
-    return true;
-  }
+
+
 
   // Comando: /cancelarTarea <id> (alias: /cancelarIncidencia <id>)
   if (normalizedBody.startsWith('/cancelartarea') || normalizedBody.startsWith('/cancelarincidencia')) {

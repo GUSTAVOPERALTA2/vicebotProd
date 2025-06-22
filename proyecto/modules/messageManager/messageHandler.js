@@ -13,6 +13,7 @@ const { extractIdentifier }           = require('../../modules/incidenceManager/
 const incidenceDB                     = require('../../modules/incidenceManager/incidenceDB');
 const { normalizeText }               = require('../../config/stringUtils');
 const { getUser }                     = require('../../config/userManager');
+const moment = require('moment-timezone');
 
 async function handleMessage(client, message) {
   try {
@@ -26,11 +27,14 @@ async function handleMessage(client, message) {
     console.log('  • hasQuotedMsg:', message.hasQuotedMsg);
 
     const normalizedText = normalizeText(message.body || '');
+    const normalizedBody = (message.body||'').toLowerCase();
     const tokens = new Set(normalizedText.split(/\s+/));
     const intents = client.keywordsData.intenciones || {};
     const genRep = intents.generarReporte || {};
     const frases = genRep.frases || [];
     const palabras = genRep.palabras || [];
+
+
 
     let activaReporte = false;
     for (let frase of frases) {
@@ -69,6 +73,124 @@ if (activaReporte && requiereVerbo) {
 
       console.log('  → Activando reporte con mensaje:', generatedCommand);
     }
+    // Intención: ayuda
+    const ayudaKW = client.keywordsData.ayuda || {};
+    const ayudaFrases = ayudaKW.frases || [];
+    const ayudaPalabras = ayudaKW.palabras || [];
+
+    let activaAyuda = false;
+    for (let frase of ayudaFrases) {
+      if (normalizedText.includes(normalizeText(frase))) {
+        activaAyuda = true;
+        break;
+      }
+    }
+    if (!activaAyuda) {
+      for (let palabra of ayudaPalabras) {
+        if (tokens.has(normalizeText(palabra))) {
+          // Seguridad: mensaje corto o contiene "bot"
+          if ((normalizedText.length < 25 && tokens.size <= 7) || normalizedText.includes("bot")) {
+            activaAyuda = true;
+            break;
+          }
+        }
+      }
+    }
+    if (activaAyuda) {
+      message.body = '/ayuda';
+      console.log('→ Intención "ayuda" detectada, redirigiendo a /ayuda');
+    }
+
+    // === INTENCIÓN NATURAL: detalles de incidencia ===
+    const detallesMatch = normalizedText.match(
+      /(?:ver|mu[eé]strame|mostrar).*(?:detalle|detalles|info|informaci[oó]n).*?(\d{1,6})/
+    );
+    if (detallesMatch && !normalizedBody.startsWith('/tareadetalles')) {
+      const incidenciaId = detallesMatch[1];
+      message.body = `/tareaDetalles ${incidenciaId}`;
+      console.log(`  → Intención "detalles" detectada, redirigiendo a ${message.body}`);
+    }
+
+
+    
+    // === INTENCIÓN: mostrar tareas por categoría ===
+    const tareasIntent = intents.tareas || {};
+    const tareasFrases = tareasIntent.frases || [];
+    const tareasPalabras = tareasIntent.palabras || [];
+
+    let activaTareas = false;
+    for (let frase of tareasFrases) {
+      if (normalizedText.includes(normalizeText(frase))) {
+        activaTareas = true;
+        break;
+      }
+    }
+    if (!activaTareas) {
+      for (let palabra of tareasPalabras) {
+        if (tokens.has(normalizeText(palabra))) {
+          activaTareas = true;
+          break;
+        }
+      }
+    }
+
+    if (activaTareas && !/^\/tareas(\s|$)/.test(normalizedText)) {
+    const partes = [];
+    const today = moment().tz("America/Hermosillo").format("YYYY-MM-DD");
+
+    // 🗓️ Alias de fecha
+    if (/\b(hoy|actual|del dia)\b/.test(normalizedText)) {
+      partes.push('hoy');
+    }
+    if (/\bayer\b/.test(normalizedText)) {
+      const ayer = moment().tz("America/Hermosillo").subtract(1, 'day').format("YYYY-MM-DD");
+      partes.push(ayer);
+    }
+    if (/\bmañana\b/.test(normalizedText)) {
+      const manana = moment().tz("America/Hermosillo").add(1, 'day').format("YYYY-MM-DD");
+      partes.push(manana);
+    }
+    if (/\bsemana pasada\b/.test(normalizedText)) {
+      const semanaPasadaInicio = moment().tz("America/Hermosillo").subtract(7, 'day').format("YYYY-MM-DD");
+      partes.push(`${semanaPasadaInicio}:${today}`);
+    }
+
+    // 📆 Rango explícito YYYY-MM-DD:YYYY-MM-DD
+    const rangoMatch = normalizedText.match(/\b(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\b/);
+    if (rangoMatch) {
+      partes.push(`${rangoMatch[1]}:${rangoMatch[2]}`);
+    }
+
+    // 🔁 Estado
+    if (/\b(pendiente|pendientes|falta|faltan|quedan)\b/.test(normalizedText)) partes.push('pendiente');
+    if (/\b(completada|completadas|finalizada|terminada)\b/.test(normalizedText)) partes.push('completada');
+    if (/\b(cancelada|canceladas|anulada|anularon)\b/.test(normalizedText)) partes.push('cancelada');
+
+    // 📂 Categoría
+    const categorias = {
+      it: /(it|sistemas|soporte|t[eé]cnico)/,
+      ama: /(ama|limpieza|hskp|camarista)/,
+      rs: /(room|room service|habitaciones|alimentos)/,
+      seg: /(seguridad|guardia|proteccion)/,
+      man: /(mantenimiento|reparaciones|averia|t[eé]cnico)/
+    };
+    for (let [cat, regex] of Object.entries(categorias)) {
+      if (regex.test(normalizedText)) {
+        partes.push(cat);
+        break;
+      }
+    }
+
+    // Si encontramos al menos un parámetro, generamos el comando
+    if (partes.length > 0) {
+      const generated = `/tareas ${partes.join(' ')}`;
+      console.log('  → Activando tareas con mensaje:', generated);
+      message.body = generated;
+    }
+  }
+
+
+    
 
     if (message.body && message.body.trim().startsWith('/')) {
       console.log('→ Comando detectado:', message.body.trim());

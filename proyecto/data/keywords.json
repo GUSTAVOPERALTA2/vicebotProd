@@ -11,7 +11,8 @@
         "cafetera",
         "ice",
         "hielo",
-        "runner"
+        "runner",
+        "capsulas de café"
       ],
       "frases": [
         "pedido a room service",
@@ -22,7 +23,8 @@
       "palabras": [
         "codigo verde",
         "caja fuerte",
-        "seguridad"
+        "seguridad",
+        "dron"
       ],
       "frases": [
         "problema de seguridad",
@@ -54,7 +56,8 @@
         "sistemas",
         "servidor",
         "musica",
-        "ap"
+        "ap",
+        "proyector"
       ],
       "frases": [
         "problema en el sistema",
@@ -92,7 +95,9 @@
         "cunas",
         "camarista",
         "secar",
-        "ama de llaves"
+        "ama de llaves",
+        "mojado",
+        "kit dental"
       ],
       "frases": [
         "turn down",
@@ -160,7 +165,8 @@
         "wc",
         "mant",
         "luces",
-        "desconectar"
+        "desconectar",
+        "extension"
       ],
       "frases": [
         "falla en el equipo",
@@ -224,7 +230,38 @@
       "anular tarea"
     ]
   },
+  "ayuda": {
+    "palabras": [
+      "ayuda",
+      "ayúdame",
+      "comandos",
+      "opciones",
+      "instrucciones"
+    ],
+    "frases": [
+      "necesito ayuda",
+      "qué comandos hay",
+      "cómo uso el bot",
+      "qué puedo hacer"
+    ]
+  },
   "intenciones": {
+    "tareasPendientes": {
+      "palabras": [
+        "pendiente",
+        "pendientes",
+        "falta",
+        "faltan",
+        "quedan",
+        "incompletas"
+      ],
+      "frases": [
+        "tareas sin hacer",
+        "por hacer",
+        "cosas que faltan",
+        "tareas pendientes"
+      ]
+    },
     "generarReporte": {
       "palabras": [
         "reporte",
@@ -266,6 +303,19 @@
         "mostrar tareas completadas",
         "mostrar tareas canceladas",
         "mostrar tareas pendientes"
+      ]
+    },
+    "tareas": {
+      "frases": [
+        "que tareas tiene",
+        "ver tareas de",
+        "dime las tareas de",
+        "mostrar tareas de"
+      ],
+      "palabras": [
+        "tareas",
+        "asignadas",
+        "actividades"
       ]
     }
   }
