@@ -69,7 +69,7 @@ async function handleIncidence(client, message) {
     await processNewIncidence(client, message);
 
   // Respuesta de equipos destino
-  } else if ([config.groupBotDestinoId, config.groupMantenimientoId, config.groupAmaId].includes(chatId)) {
+  } else if ([config.groupBotDestinoId, config.groupMantenimientoId, config.groupAmaId, config.groupRoomServiceId, config.groupSeguridadId].includes(chatId)) {
     await handleTeamResponse(client, message);
   } else {
     console.log("Mensaje de grupo no gestionado. Se omite.");

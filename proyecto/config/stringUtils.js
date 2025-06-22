@@ -8,8 +8,13 @@
  * @param {string} text - El texto a normalizar.
  * @returns {string} - El texto normalizado.
  */
-function normalizeText(text) {
-  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+function normalizeText(str) {
+  return str
+    .normalize('NFD')                 // elimina acentos
+    .replace(/[\u0300-\u036f]/g, '')  // remueve marcas de acento
+    .replace(/[^\w\s]/g, '')          // remueve puntuación (todo lo que no sea letra, número o espacio)
+    .toLowerCase()
+    .trim();
 }
 
 /**

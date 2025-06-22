@@ -21,7 +21,7 @@ function setupEditHandler(client) {
       // 3) Recalcula categorías
       const text = newMessage.body.toLowerCase();
       const cats = [];
-      for (const cat of ['it','man','ama']) {
+      for (const cat of ['it','man','ama','seg','rs']) {
         const data = client.keywordsData.identificadores[cat];
         if (!data) continue;
         if (

@@ -4,7 +4,7 @@ const incidenceDB = require('./incidenceDB');
 const { MessageMedia } = require('whatsapp-web.js');
 const moment = require('moment-timezone');
 const { v4: uuidv4 } = require('uuid');
-const { normalizeText, similarity, adaptiveSimilarityCheck } = require('../../config/stringUtils');
+const { normalizeText, similarity } = require('../../config/stringUtils');
 const { getUser } = require('../../config/userManager');
 
 async function processNewIncidence(client, message) {
@@ -12,7 +12,6 @@ async function processNewIncidence(client, message) {
   const chatId = chat.id._serialized;
   console.log("Procesando mensaje de Grupo de Incidencias.");
 
-  // Normalizamos y limpiamos el mensaje eliminando puntuación
   const normalizedMessage = normalizeText(message.body);
   const cleanedMessage = normalizedMessage.replace(/[.,!?()]/g, '');
   console.log(`Mensaje original: "${message.body}"`);
@@ -24,31 +23,63 @@ async function processNewIncidence(client, message) {
   }
   const wordsSet = new Set(cleanedMessage.split(/\s+/));
 
-  // Detectar categorías
-  const categories = ['it','ama','man'];
-  let foundCategories = [];
+  const categories = ['it', 'ama', 'man', 'rs', 'seg'];
   const keywordsData = client.keywordsData;
+  const categoryScores = {};
+
   for (let category of categories) {
     const data = keywordsData.identificadores[category];
     if (!data) continue;
 
-    // Palabras clave con similitud
-    const foundKeyword = data.palabras.some(keyword => {
+    let score = 0;
+
+    for (let keyword of data.palabras) {
       const normKey = normalizeText(keyword);
-      return Array.from(wordsSet).some(word => adaptiveSimilarityCheck(word, normKey));
-    });
-    // Frases exactas
-    const foundPhrase = data.frases.some(phrase => normalizedMessage.includes(normalizeText(phrase)));
-    if (foundKeyword || foundPhrase) foundCategories.push(category);
+      for (let word of wordsSet) {
+        const sim = similarity(word, normKey);
+        if (sim >= 0.8) {
+          score += sim;
+          console.log(`✅ [${category}] "${word}" ~ "${keyword}" → +${sim.toFixed(2)}`);
+        }
+      }
+    }
+
+    for (let phrase of data.frases) {
+      if (normalizedMessage.includes(normalizeText(phrase))) {
+        score += 1.2;
+        console.log(`✅ [${category}] coincidencia de frase: "${phrase}" → +1.2`);
+      }
+    }
+
+    categoryScores[category] = score;
   }
+
+  console.log("🏁 Resultado de puntuaciones por categoría:");
+  Object.entries(categoryScores).forEach(([cat, score]) => {
+    console.log(`→ ${cat.toUpperCase()}: ${score.toFixed(2)}`);
+  });
+
+  const threshold = 1.0;
+  const foundCategories = Object.entries(categoryScores)
+    .filter(([_, score]) => score >= threshold)
+    .map(([cat]) => cat);
 
   if (!foundCategories.length) {
     console.log("No se encontró ninguna categoría en el mensaje.");
+    await message.reply(
+      "*🤖 No detecté ninguna incidencia en tu mensaje.*\n\n" +
+      "*Por favor indica a qué área va dirigida:*  \n\n" +
+      "▫️ IT (Sistemas) \n" +
+      "▫️ Mantenimiento (Mantenimiento) \n" +
+      "▫️ Ama de llaves (HSKP) \n" +
+      "▫️ Room service (RoomService) \n" +
+      "▫️ Seguridad (Seguridad) \n\n" +
+      "_Vuelve a intentarlo con un mensaje más claro._\n" +
+      "Ejemplo: 'Room service en 1010' para indicar Room Service."
+    );
     return;
   }
-  console.log(`Categorías detectadas: ${foundCategories.join(', ')}`);
 
-  // Preparar incidencia
   let confirmaciones = null;
   if (foundCategories.length > 1) {
     confirmaciones = {};
@@ -88,12 +119,11 @@ async function processNewIncidence(client, message) {
     }
     console.log("Incidencia registrada con ID:", lastID);
 
-    // Función para reenviar a equipo
     async function forwardMessage(targetGroupId, label) {
       try {
         const targetChat = await client.getChatById(targetGroupId);
-        const caption = `*Nueva tarea recibida (ID: ${lastID}):* \n\n`+
-        `✅ *${message.body}*`;
+        const caption = `*Nueva tarea recibida (ID: ${lastID}):* \n\n` +
+          `✅ *${message.body}*`;
         if (mediaData) {
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });
@@ -104,21 +134,29 @@ async function processNewIncidence(client, message) {
         console.error(`Error al reenviar a ${label}:`, e);
       }
     }
+
     if (foundCategories.includes('it')) await forwardMessage(config.groupBotDestinoId, 'IT');
     if (foundCategories.includes('man')) await forwardMessage(config.groupMantenimientoId, 'Mantenimiento');
     if (foundCategories.includes('ama')) await forwardMessage(config.groupAmaId, 'Ama de Llaves');
+    if (foundCategories.includes('rs')) await forwardMessage(config.groupRoomServiceId, 'Room Service');
+    if (foundCategories.includes('seg')) await forwardMessage(config.groupSeguridadId, 'Seguridad');
 
-    // Construir teamList
-    const teamNames = { it:'IT', ama:'Ama de Llaves', man:'Mantenimiento' };
-    const teams = foundCategories.map(c=>teamNames[c]);
-    let teamList = teams.join(teams.length>1?' y ':'');
+    const teamNames = {
+      it: 'IT',
+      ama: 'Ama de Llaves',
+      man: 'Mantenimiento',
+      rs: 'Room Service',
+      seg: 'Seguridad'
+    };
+    const teams = foundCategories.map(c => teamNames[c]);
+    const teamList = teams.join(teams.length > 1 ? ' y ' : '');
 
-    // Responder al usuario
-    await chat.sendMessage(`🤖 *El mensaje se ha enviado al equipo:* \n\n` + 
-      `✅ ${teamList}\n\n` +
-      `*ID:* ${lastID}`);
+    await message.reply(`🤖 *El mensaje se ha enviado al equipo:* 
 
-    // Si es chat 1:1, notificar al grupo principal
+✅ ${teamList}
+
+*ID:* ${lastID}`);
+
     if (!chat.isGroup) {
       try {
         const mainChat = await client.getChatById(config.groupPruebaId);

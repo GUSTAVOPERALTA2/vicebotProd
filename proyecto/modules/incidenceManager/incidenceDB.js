@@ -9,7 +9,6 @@ function initDB() {
       console.error("Error al abrir la BD:", err);
     } else {
       console.log("Base de datos iniciada.");
-      // Se incluye una nueva columna 'feedbackHistory' para almacenar el historial en formato JSON.
       db.run(`CREATE TABLE IF NOT EXISTS incidencias (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uniqueMessageId TEXT,
@@ -50,14 +49,23 @@ function insertarIncidencia(incidencia, callback) {
     incidencia.estado,
     incidencia.categoria,
     incidencia.confirmaciones ? JSON.stringify(incidencia.confirmaciones) : null,
-    JSON.stringify([]), // Iniciar feedbackHistory como un arreglo vacío.
+    JSON.stringify([]),
     incidencia.grupoOrigen,
     incidencia.media,
-    null, // fechaFinalizacion
-    null, // completadoPorJid
-    null // completadoPorNombre
+    null,
+    null,
+    null
   ], function(err) {
     callback(err, this.lastID);
+  });
+}
+
+function insertarIncidenciaAsync(incidencia) {
+  return new Promise((resolve, reject) => {
+    insertarIncidencia(incidencia, (err, id) => {
+      if (err) reject(err);
+      else resolve(id);
+    });
   });
 }
 
@@ -109,69 +117,64 @@ function getIncidenciaById(incidenciaId, callback) {
   });
 }
 
-function getIncidenciasByCategory(category, callback) {
-  const sql = "SELECT * FROM incidencias WHERE categoria LIKE ?";
-  db.all(sql, [`%${category}%`], (err, rows) => {
-    if (err) {
-      callback(err);
-    } else {
-      if (rows) {
-        rows.forEach(row => {
-          if (row.confirmaciones) {
-            try {
-              row.confirmaciones = JSON.parse(row.confirmaciones);
-            } catch (e) {
-              console.error("Error al parsear confirmaciones:", e);
-            }
-          }
-        });
+function getIncidenciaByIdAsync(incidenciaId) {
+  return new Promise((resolve, reject) => {
+    const sql = "SELECT * FROM incidencias WHERE id = ?";
+    db.get(sql, [incidenciaId], (err, row) => {
+      if (err) return reject(err);
+      if (row && row.confirmaciones) {
+        try {
+          row.confirmaciones = JSON.parse(row.confirmaciones);
+        } catch (e) {
+          console.error("Error al parsear confirmaciones:", e);
+        }
       }
-      callback(null, rows);
-    }
+      resolve(row);
+    });
   });
 }
 
-function getIncidenciasByDate(date, callback) {
-  const sql = "SELECT * FROM incidencias WHERE fechaCreacion LIKE ?";
-  db.all(sql, [`${date}%`], (err, rows) => {
-    if (err) {
-      callback(err);
-    } else {
-      if (rows) {
-        rows.forEach(row => {
-          if (row.confirmaciones) {
-            try {
-              row.confirmaciones = JSON.parse(row.confirmaciones);
-            } catch (e) {
-              console.error("Error al parsear confirmaciones:", e);
-            }
-          }
-        });
-      }
-      callback(null, rows);
-    }
-  });
-}
+async function filtrarIncidencias(filtros) {
+  return new Promise((resolve, reject) => {
+    const condiciones = [];
+    const params = [];
 
-function getIncidenciasByRange(fechaInicio, fechaFin, callback) {
-  const sql = "SELECT * FROM incidencias WHERE fechaCreacion >= ? AND fechaCreacion <= ?";
-  db.all(sql, [fechaInicio, fechaFin], (err, rows) => {
-    if (err) {
-      callback(err);
-    } else {
+    if (filtros.estado) {
+      condiciones.push("estado = ?");
+      params.push(filtros.estado);
+    }
+    if (filtros.categoria) {
+      condiciones.push("categoria = ?");
+      params.push(filtros.categoria);
+    }
+    if (filtros.startDate) {
+      condiciones.push("fechaCreacion >= ?");
+      params.push(filtros.startDate);
+    }
+    if (filtros.endDate) {
+      condiciones.push("fechaCreacion <= ?");
+      params.push(filtros.endDate);
+    }
+
+    const whereClause = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+    const sql = `SELECT * FROM incidencias ${whereClause}`;
+
+    db.all(sql, params, (err, rows) => {
+      if (err) {
+        console.error("Error en filtrarIncidencias:", err);
+        return resolve([]);
+      }
       if (rows) {
         rows.forEach(row => {
-          if (row.confirmaciones) {
-            try {
-              row.confirmaciones = JSON.parse(row.confirmaciones);
-            } catch (e) {
-              console.error("Error al parsear confirmaciones:", e);
-            }
+          try {
+            row.confirmaciones = JSON.parse(row.confirmaciones || '[]');
+          } catch (e) {
+            console.error("Error parseando confirmaciones:", e);
           }
         });
       }
-      callback(null, rows);
-    }
+      resolve(rows || []);
+    });
   });
 }
 
@@ -189,13 +192,6 @@ function updateConfirmaciones(incidenciaId, confirmaciones, callback) {
   });
 }
 
-/**
- * updateFeedbackHistory:
- * - Se obtiene el historial actual.
- * - Si newFeedback es un arreglo, se reemplaza el historial completo.
- * - Si newFeedback es un objeto individual, se agrega al historial.
- * - Se actualiza la BD con JSON.stringify(history) una única vez.
- */
 function updateFeedbackHistory(incidenciaId, newFeedback, callback) {
   const sqlSelect = "SELECT feedbackHistory FROM incidencias WHERE id = ?";
   db.get(sqlSelect, [incidenciaId], (err, row) => {
@@ -223,18 +219,33 @@ function updateFeedbackHistory(incidenciaId, newFeedback, callback) {
 function cancelarIncidencia(incidenciaId, callback) {
   const sql = "UPDATE incidencias SET estado = ?, fechaCancelacion = ? WHERE id = ? AND estado = ?";
   const fechaCancelacion = new Date().toISOString();
-  console.log(`Ejecutando cancelarIncidencia para ID: ${incidenciaId} con estado 'pendiente'. Fecha cancelación: ${fechaCancelacion}`);
   db.run(sql, ["cancelada", fechaCancelacion, incidenciaId, "pendiente"], function(err) {
     if (err) {
-      console.error(`Error en cancelarIncidencia para ID: ${incidenciaId}:`, err);
       callback(err);
     } else if (this.changes === 0) {
-      console.warn(`cancelarIncidencia: No se actualizó ninguna incidencia para ID: ${incidenciaId}. Verifica que la incidencia exista y esté en estado 'pendiente'.`);
-      callback(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y que la incidencia esté en estado pendiente."));
+      callback(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y esté en estado pendiente."));
     } else {
-      console.log(`cancelarIncidencia: Incidencia ID ${incidenciaId} actualizada a 'cancelada' correctamente.`);
       callback(null);
     }
+  });
+}
+
+function cancelarIncidenciaAsync(incidenciaId) {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      UPDATE incidencias
+      SET estado = 'cancelada',
+          fechaCancelacion = ?
+      WHERE id = ? AND estado = 'pendiente'`;
+
+    const fechaCancelacion = new Date().toISOString();
+    db.run(sql, [fechaCancelacion, incidenciaId], function(err) {
+      if (err) return reject(err);
+      if (this.changes === 0) {
+        return reject(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y esté en estado pendiente."));
+      }
+      resolve();
+    });
   });
 }
 
@@ -248,15 +259,6 @@ function updateCategoria(id, categoria, callback) {
   db.run(sql, [categoria, id], err => callback(err));
 }
 
-
-/**
- * Marca la incidencia como completada, guardando estado, quién y cuándo.
- * @param {number}   id             ID de la incidencia.
- * @param {string}   completedJid   JID de WhatsApp de quien completa.
- * @param {string}   completedName  Nombre legible (desde users.json).
- * @param {string}   completionTime ISO timestamp de finalización.
- * @param {function} cb             Callback(err).
- */
 function completeIncidencia(id, completedJid, completedName, completionTime, cb) {
   const sql = `
     UPDATE incidencias
@@ -279,22 +281,34 @@ function updateFase(incidenciaId, fase, cb) {
   db.run(sql, [fase, incidenciaId], cb);
 }
 
+function updateFaseAsync(incidenciaId, fase) {
+  return new Promise((resolve, reject) => {
+    const sql = `UPDATE incidencias SET faseActual = ? WHERE id = ?`;
+    db.run(sql, [fase, incidenciaId], function(err) {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
 module.exports = {
   initDB,
   getDB,
   insertarIncidencia,
+  insertarIncidenciaAsync,
   buscarIncidenciaPorUniqueIdAsync,
   buscarIncidenciaPorOriginalMsgIdAsync,
   getIncidenciaById,
-  getIncidenciasByCategory,
-  getIncidenciasByDate,
-  getIncidenciasByRange,
+  getIncidenciaByIdAsync,
   updateIncidenciaStatus,
   updateConfirmaciones,
   updateFeedbackHistory,
   cancelarIncidencia,
+  cancelarIncidenciaAsync,
   updateDescripcion,
   updateCategoria,
   completeIncidencia,
-  updateFase
+  updateFase,
+  updateFaseAsync,
+  filtrarIncidencias
 };

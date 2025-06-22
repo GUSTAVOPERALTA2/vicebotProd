@@ -67,6 +67,8 @@ async function processConfirmation(client, message) {
     if (chatId === config.groupBotDestinoId)         categoriaEquipo = 'it';
     else if (chatId === config.groupMantenimientoId) categoriaEquipo = 'man';
     else if (chatId === config.groupAmaId)           categoriaEquipo = 'ama';
+    else if (chatId === config.groupRoomServiceId)   categoriaEquipo = 'rs';
+    else if (chatId === config.groupSeguridadId)     categoriaEquipo = 'seg';
     else {
       categoriaEquipo = requiredTeams[0];
       console.log('🔍 processConfirmation: confirmación desde DM, categoría asumida =', categoriaEquipo);
@@ -110,7 +112,7 @@ async function processConfirmation(client, message) {
     console.log('✅ Se actualizó feedbackHistory y confirmaciones para incidencia ID', incidenciaId);
 
     // Helper de emojis de equipos
-    const EMOJIS = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
+    const EMOJIS = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP', rs: '🍷 RS', seg: '🦺 SEG' };
 
     // 9) Si solo hay un equipo destino, completamos la incidencia de inmediato
     if (requiredTeams.length === 1) {
@@ -227,7 +229,7 @@ function formatDuration(start, end) {
 }
 
 function generarComentarios(inc, requiredTeams) {
-  const emojis = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
+  const emojis = { it: '*IT*', man: '*MANT*', ama: '*HSKP*', rs: '*RS*', seg: '*SEG*' };
   let text = '';
   let historyArr = [];
   try {
@@ -248,7 +250,7 @@ function generarComentarios(inc, requiredTeams) {
 }
 
 function buildPartialMessage(inc, required, confirmed, historyArr, fase) {
-  const emojis = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
+  const emojis = { it: 'IT', man: 'MANT', ama: 'HSKP', rs: 'RS', seg: 'SEG' };
   const diffStr     = formatDuration(inc.fechaCreacion, new Date().toISOString());
   const comentarios = generarComentarios(inc, required);
   const confirmers  = confirmed
@@ -260,47 +262,43 @@ function buildPartialMessage(inc, required, confirmed, historyArr, fase) {
     .join(', ') || 'Ninguno';
 
   return (
-    `❗❗❗❗❗❗❗❗❗❗❗❗\n` +
-    `🤖🟡 *ATENCIÓN TAREA EN FASE ${fase}*\n\n` +
-    `*Tarea de ${required.map(t => emojis[t]).join(', ')}*:\n\n` +
-    `${inc.descripcion}\n\n` +
-    `*🟢 Confirmado:* ${confirmed.map(t => emojis[t]).join(', ') || 'Ninguno'}\n` +
-    `*👤 Completado por:* ${confirmers}\n\n` +
+    `*${inc.descripcion}* \n\n` +
+    `*🟢 Terminado por:* ${confirmed.map(t => emojis[t]).join(', ') || 'Ninguno'}\n` +
+    `*👤 Colega:* ${confirmers}\n\n` +
     `*🔴 Falta:* ${required.filter(t => !confirmed.includes(t)).map(t => emojis[t]).join(', ') || 'Ninguno'}\n\n` +
+    `*🟡 TAREA EN FASE ${fase}*\n\n` +
     `*💬 Comentarios:*\n${comentarios}\n\n` +
     `*⏱️ Tiempo transcurrido:* ${diffStr}`
   );
 }
 
 function buildFinalMessage(inc, required) {
-  const emojis   = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP' };
+  const emojis   = { it: 'IT', man: 'MANT', ama: 'HSKP', rs: 'RS', seg: 'SEG' };
   const createdAt   = formatDate(inc.fechaCreacion);
   const concludedAt = formatDate(inc.fechaFinalizacion);
   const totalStr    = formatDuration(inc.fechaCreacion, inc.fechaFinalizacion);
   const cronos      = required.map(team => {
     const ts  = inc.confirmaciones[team];
     return ts
-      ? `*⌛Tiempo ${emojis[team]}:* ${formatDuration(inc.fechaCreacion, ts)
+      ? `*⌛ ${emojis[team]}:* ${formatDuration(inc.fechaCreacion, ts)
           .replace(/ día\(s\), /, 'd ')
           .replace(/ hora\(s\), /, 'h ')
           .replace(/ minuto\(s\)/, 'm')}`
-      : `*⌛Tiempo ${emojis[team]}:* NaNd NaNh NaNm`;
+      : `*⌛ ${emojis[team]}:* NaNd NaNh NaNm`;
   }).join('\n');
 
   return (
-    `❗❗❗❗❗❗❗❗❗❗❗❗\n` +
-    `*🤖✅ ATENCIÓN FASE ${inc.faseActual} ✅🤖*\n\n` +
-    `*Tarea de ${required.map(t => emojis[t]).join(', ')}*:\n\n` +
     `${inc.descripcion}\n\n` +
     `*ha sido COMPLETADA*\n\n` +
+    `*👤 Colega(s):* ${inc.completadoPorNombre}\n\n` +
     `*📅Creación:* ${createdAt}\n` +
     `*📅Conclusión:* ${concludedAt}\n\n` +
-    `*👤 Completado por:* ${inc.completadoPorNombre}\n\n` +
-    `*⏱️ Total:* ${totalStr
+    `*⏱️ Tiempo total:* ${totalStr
       .replace(/ día\(s\), /, 'd ')
       .replace(/ hora\(s\), /, 'h ')
       .replace(/ minuto\(s\)/, 'm')}\n` +
     `${cronos}\n\n` +
+    `*🤖✅ FASE ${inc.faseActual} ✅🤖*\n\n` +
     `*ID:* ${inc.id}\n\n` +
     `*MUCHAS GRACIAS POR SU PACIENCIA* 😊`
   );
