@@ -1,5 +1,41 @@
 {
   "identificadores": {
+    "rs": {
+      "palabras": [
+        "room service",
+        "servicio de habitaciones",
+        "copa",
+        "roomservice",
+        "ice bucket",
+        "90s",
+        "cafetera",
+        "ice",
+        "hielo",
+        "runner",
+        "capsulas de café"
+      ],
+      "frases": [
+        "pedido a room service",
+        "servicio de habitaciones"
+      ]
+    },
+    "seg": {
+      "palabras": [
+        "codigo verde",
+        "caja fuerte",
+        "seguridad",
+        "dron"
+      ],
+      "frases": [
+        "problema de seguridad",
+        "código verde",
+        "caja fuerte",
+        "caja fuerte no funciona",
+        "caja fuerte no abre",
+        "caja fuerte bloqueada",
+        "caja fuerte atascada"
+      ]
+    },
     "it": {
       "palabras": [
         "televisión",
@@ -20,7 +56,8 @@
         "sistemas",
         "servidor",
         "musica",
-        "ap"
+        "ap",
+        "proyector"
       ],
       "frases": [
         "problema en el sistema",
@@ -49,11 +86,23 @@
         "bote de basura",
         "almohada",
         "almohada sintética",
-        "toalla"
+        "toalla",
+        "papel",
+        "cuna",
+        "botellita",
+        "basura",
+        "bata",
+        "cunas",
+        "camarista",
+        "secar",
+        "ama de llaves",
+        "mojado",
+        "kit dental"
       ],
       "frases": [
         "turn down",
-        "ama de llaves"
+        "ama de llaves",
+        "botella de agua"
       ]
     },
     "man": {
@@ -68,7 +117,6 @@
         "retoque",
         "alberca",
         "jacuzzi",
-        "terraza",
         "cancel",
         "cortina",
         "mármol",
@@ -79,8 +127,12 @@
         "silla",
         "rgb",
         "tira led",
-        "wc",
-        "tv",
+        "fuga",
+        "fugas",
+        "fuga de agua",
+        "fugas de agua",
+        "fuga de gas",
+        "fugas de gas",
         "madera",
         "plafón",
         "minibar",
@@ -94,7 +146,6 @@
         "inundo",
         "inundación",
         "carpinteria",
-        "control",
         "ventiladores",
         "elevador",
         "drenando",
@@ -103,13 +154,27 @@
         "controles",
         "tornillo",
         "aire acondicionado",
-        "baño"
+        "agrietado",
+        "pintando",
+        "temperatura",
+        "ac",
+        "enfria",
+        "enfriando",
+        "inundada",
+        "cortinas",
+        "wc",
+        "mant",
+        "luces",
+        "desconectar",
+        "extension"
       ],
       "frases": [
         "falla en el equipo",
         "necesita reparación",
         "problema de mantenimiento",
-        "aire acondicionado"
+        "aire acondicionado",
+        "agua caliente",
+        "agua fria"
       ]
     },
     "retro": {
@@ -164,5 +229,94 @@
       "cancelar incidencia",
       "anular tarea"
     ]
+  },
+  "ayuda": {
+    "palabras": [
+      "ayuda",
+      "ayúdame",
+      "comandos",
+      "opciones",
+      "instrucciones"
+    ],
+    "frases": [
+      "necesito ayuda",
+      "qué comandos hay",
+      "cómo uso el bot",
+      "qué puedo hacer"
+    ]
+  },
+  "intenciones": {
+    "tareasPendientes": {
+      "palabras": [
+        "pendiente",
+        "pendientes",
+        "falta",
+        "faltan",
+        "quedan",
+        "incompletas"
+      ],
+      "frases": [
+        "tareas sin hacer",
+        "por hacer",
+        "cosas que faltan",
+        "tareas pendientes"
+      ]
+    },
+    "generarReporte": {
+      "palabras": [
+        "reporte",
+        "reportes",
+        "estadísticas",
+        "pendientes",
+        "completadas",
+        "canceladas",
+        "hoy",
+        "it",
+        "ama",
+        "room",
+        "seguridad",
+        "mantenimiento"
+      ],
+      "frases": [
+        "generar reporte",
+        "genera reporte",
+        "reporte de hoy",
+        "dame el reporte",
+        "muéstrame el reporte",
+        "quiero ver el reporte",
+        "haz un reporte",
+        "ver reporte",
+        "mostrar reporte",
+        "ver las tareas de hoy",
+        "quiero lo de hoy",
+        "reporte ama de llaves",
+        "reporte de limpieza",
+        "reporte de mantenimiento",
+        "reporte de room service",
+        "reporte de seguridad",
+        "reporte de it",
+        "reporte completadas",
+        "reporte canceladas",
+        "reporte pendientes",
+        "reporte de tareas",
+        "reporte general",
+        "mostrar tareas completadas",
+        "mostrar tareas canceladas",
+        "mostrar tareas pendientes"
+      ]
+    },
+    "tareas": {
+      "frases": [
+        "que tareas tiene",
+        "ver tareas de",
+        "dime las tareas de",
+        "mostrar tareas de"
+      ],
+      "palabras": [
+        "tareas",
+        "asignadas",
+        "actividades"
+      ]
+    }
   }
 }

@@ -13,6 +13,8 @@ function loadKeywords() {
       identificadores: {
         it: { palabras: [], frases: [] },
         ama: { palabras: [], frases: [] },
+        rs: { palabras: [], frases: [] },
+        seg: { palabras: [], frases: [] },
         man: { palabras: [], frases: [] }
       },
       confirmacion: {
@@ -38,7 +40,7 @@ function addEntry(category, type, entry) {
   const data = loadKeywords();
   entry = entry.toLowerCase().trim();
   let targetArray;
-  if (['it', 'ama', 'man'].includes(category)) {
+  if (['it', 'ama', 'man', 'seg', 'rs'].includes(category)) {
     if (type === 'p') {
       targetArray = data.identificadores[category].palabras;
     } else if (type === 'f') {
@@ -72,7 +74,7 @@ function removeEntry(category, type, entry) {
   const data = loadKeywords();
   entry = entry.toLowerCase().trim();
   let targetArray;
-  if (['it', 'ama', 'man'].includes(category)) {
+  if (['it', 'ama', 'man', 'rs', 'seg'].includes(category)) {
     if (type === 'p') {
       targetArray = data.identificadores[category].palabras;
     } else if (type === 'f') {
@@ -108,7 +110,7 @@ function editEntry(category, type, oldEntry, newEntry) {
   oldEntry = oldEntry.toLowerCase().trim();
   newEntry = newEntry.toLowerCase().trim();
   let targetArray;
-  if (['it', 'ama', 'man'].includes(category)) {
+  if (['it', 'ama', 'man', 'seg', 'rs'].includes(category)) {
     if (type === 'p') {
       targetArray = data.identificadores[category].palabras;
     } else if (type === 'f') {
@@ -149,6 +151,3 @@ module.exports = {
   removeEntry,
   editEntry
 };
-
-
-//Manager final

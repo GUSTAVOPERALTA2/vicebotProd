@@ -36,9 +36,12 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
     params.push(`${endDate}T23:59:59.999Z`);
   }
   if (categories?.length) {
-    clauses.push(`(${categories.map(() => 'categoria LIKE ?').join(' OR ')})`);
-    categories.forEach(c => params.push(`%${c}%`));
+    clauses.push(
+      `(${categories.map(() => "INSTR(',' || categoria || ',', ?) > 0").join(' OR ')})`
+    );
+    categories.forEach(c => params.push(`,${c},`));
   }
+  
   if (statuses?.length) {
     clauses.push(`(${statuses.map(() => 'estado = ?').join(' OR ')})`);
     statuses.forEach(s => params.push(s));

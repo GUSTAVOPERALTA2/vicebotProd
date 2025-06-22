@@ -85,7 +85,7 @@ async function processCancelationNewMethod(client, message) {
 
         // Notificación al chat que solicitó la cancelación
         await chat.sendMessage(
-          `🤖✅  La incidencia ID: ${incidencia.id} ha sido cancelada por ${who}`
+          `🤖✅  *La incidencia ID: ${incidencia.id} ha sido cancelada por ${who}* `
         );
 
         // Notificar a cada grupo destino asociado a la categoría
