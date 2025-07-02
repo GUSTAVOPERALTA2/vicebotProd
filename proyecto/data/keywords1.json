@@ -2,7 +2,10 @@
   "identificadores": {
     "rs": {
       "palabras": [
+        "room service",
+        "servicio de habitaciones",
         "copa",
+        "roomservice",
         "ice bucket",
         "90s",
         "cafetera",
@@ -12,7 +15,7 @@
         "capsulas de café"
       ],
       "frases": [
-        "pedido a",
+        "pedido a room service",
         "servicio de habitaciones"
       ]
     },
@@ -24,6 +27,7 @@
         "dron"
       ],
       "frases": [
+        "problema de seguridad",
         "código verde",
         "caja fuerte",
         "caja fuerte no funciona",
@@ -40,6 +44,7 @@
         "tele",
         "canales",
         "switch",
+        "it",
         "encender",
         "internet",
         "chromecast",
@@ -48,18 +53,21 @@
         "fldsmdfsr",
         "teléfono",
         "controles",
+        "sistemas",
         "servidor",
         "musica",
         "ap",
         "proyector"
       ],
       "frases": [
+        "problema en el sistema",
         "la aplicación no responde",
         "error crítico"
       ]
     },
     "ama": {
       "palabras": [
+        "hskp",
         "limpio",
         "limpiar",
         "limpieza",
@@ -87,16 +95,19 @@
         "cunas",
         "camarista",
         "secar",
+        "ama de llaves",
         "mojado",
         "kit dental"
       ],
       "frases": [
         "turn down",
+        "ama de llaves",
         "botella de agua"
       ]
     },
     "man": {
       "palabras": [
+        "mantenimiento",
         "reparar",
         "avería",
         "chapa",
@@ -160,6 +171,7 @@
       "frases": [
         "falla en el equipo",
         "necesita reparación",
+        "problema de mantenimiento",
         "aire acondicionado",
         "agua caliente",
         "agua fria"
