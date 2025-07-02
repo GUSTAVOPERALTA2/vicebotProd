@@ -81,7 +81,17 @@ async function processNewIncidence(client, message) {
 
   // === Si aún no hay categorías válidas ===
   if (!foundCategories.length) {
-    await chat.sendMessage("🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento).", { quotedMessageId: message.id._serialized });
+    try {
+      await chat.sendMessage(
+        "🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento).",
+        { quotedMessageId: message.id._serialized }
+      );
+    } catch (err) {
+      console.error("❌ Error al enviar advertencia sin categoría (con cita):", err);
+      await chat.sendMessage(
+        "🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento)."
+      );
+    }
     console.warn("⚠️ No se detectó categoría. Mensaje ignorado.");
     return;
   }
@@ -153,9 +163,17 @@ async function processNewIncidence(client, message) {
     const teamNames = { it:'IT', ama:'Ama de Llaves', man:'Mantenimiento', exp:'Experiencia' };
     const teams = foundCategories.map(c=>teamNames[c] || c);
     let teamList = teams.join(teams.length>1?' y ':'');
-
-    await chat.sendMessage(`*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`, { quotedMessageId: message.id._serialized });
-
+    try {
+      await chat.sendMessage(
+        `*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`,
+        { quotedMessageId: message.id._serialized }
+      );
+    } catch (err) {
+      console.error("❌ Error al citar el mensaje original. Enviando sin cita:", err);
+      await chat.sendMessage(
+        `*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`
+      );
+    }
     if (!chat.isGroup) {
       try {
         const mainChat = await client.getChatById(config.groupPruebaId);

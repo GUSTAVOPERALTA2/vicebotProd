@@ -60,20 +60,28 @@ async function requestFeedback(client, message) {
   for (const team of teams) {
     const groupId = config.destinoGrupos[team];
     if (!groupId) continue;
-    const destChat = await client.getChatById(groupId);
-    await destChat.sendMessage(
-      `📝 *SOLICITUD DE RETROALIMENTACIÓN*\n\n` +
-      `${inc.descripcion}\n\n` +
-      `_Por favor, respondan citando este mensaje con su retroalimentación._ \n\n` +
-      `*ID:* ${incidenciaId}\n` +
-      `*Categoría:* ${team.toUpperCase()}`
-    );
+    try {
+      const destChat = await client.getChatById(groupId);
+      await destChat.sendMessage(
+        `📝 *SOLICITUD DE RETROALIMENTACIÓN*\n\n` +
+        `${inc.descripcion}\n\n` +
+        `_Por favor, respondan citando este mensaje con su retroalimentación._ \n\n` +
+        `*ID:* ${incidenciaId}\n` +
+        `*Categoría:* ${team.toUpperCase()}`
+      );
+    } catch (e) {
+      console.error(`❌ Error al enviar solicitud de feedback al grupo ${groupId}:`, e);
+    }
   }
 
   // 6) Confirmar en el grupo origen
-  await originChat.sendMessage(
-    `✅ Solicitud de feedback enviada para la incidencia ID ${incidenciaId}.`
-  );
+  try {
+    await originChat.sendMessage(
+      `✅ Solicitud de feedback enviada para la incidencia ID ${incidenciaId}.`
+    );
+  } catch (e) {
+    console.error(`❌ Error al confirmar solicitud de feedback al originador:`, e);
+  }
 }
 
 /**
@@ -161,10 +169,13 @@ async function handleTeamResponse(client, message) {
       `🗣️ *${teamName} responde:* \n${message.body}`;
 
     // 2. Notificar al grupo destino (desde donde se responde)
-    await chat.sendMessage(
-      `✅ *Respuesta enviada al emisor ${whoName} para la tarea ${incidenciaId}*`
-    );
-
+    try {
+      await chat.sendMessage(
+        `✅ *Respuesta enviada al emisor ${whoName} para la tarea ${incidenciaId}*`
+      );
+    } catch (e) {
+      console.error(`❌ Error al enviar confirmación de respuesta en grupo destino:`, e);
+    }
     // 3. Si fue reportado por DM, también responder directo al usuario
     if (!inc.grupoOrigen.endsWith('@g.us')) {
       try {
@@ -220,7 +231,11 @@ async function handleOriginResponse(client, message) {
 
   // 5) Confirmar al originador
   const originChat = await message.getChat();
-  await originChat.sendMessage(`✅ *Tu comentario ha sido registrado para la incidencia ID ${incidenciaId}.* `);
+  try {
+    await originChat.sendMessage(`✅ *Tu comentario ha sido registrado para la incidencia ID ${incidenciaId}.*`);
+  } catch (e) {
+    console.error('❌ Error al confirmar comentario del originador:', e);
+  }
 }
 
 module.exports = {
