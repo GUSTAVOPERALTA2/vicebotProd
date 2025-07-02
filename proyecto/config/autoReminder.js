@@ -91,12 +91,17 @@ function checkPendingIncidences(client, initialRun = false) {
                     `🤖 *Si la tarea ya se completo. Marca "Listo" por favor.* \n\n` +
                     `ID: ${row.id}`;
         console.log(`Enviando recordatorio para incidencia ${row.id} a grupo ${groupId} (categoría ${categoria})`);
-        client.getChatById(groupId)
-          .then(chat => {
-            chat.sendMessage(msg);
+        client.getChatById(groupId).then(async chat => {
+          try {
+            await chat.sendMessage(msg);
             console.log(`Recordatorio enviado para incidencia ${row.id} a grupo ${groupId}.`);
-          })
-          .catch(e => console.error(`Error al enviar recordatorio para incidencia ${row.id}:`, e));
+          } catch (e) {
+            console.error(`❌ Error al enviar recordatorio para grupo ${groupId}:`, e);
+          }
+        })
+        .catch(e => {
+          console.error(`❌ Error al obtener chat para grupo ${groupId}:`, e);
+        });
       });
     });
   });
