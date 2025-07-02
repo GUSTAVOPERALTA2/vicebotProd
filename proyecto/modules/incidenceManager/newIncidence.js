@@ -4,82 +4,89 @@ const incidenceDB = require('./incidenceDB');
 const { MessageMedia } = require('whatsapp-web.js');
 const moment = require('moment-timezone');
 const { v4: uuidv4 } = require('uuid');
-const { normalizeText, similarity } = require('../../config/stringUtils');
-const { getUser } = require('../../config/userManager');
+const { normalizeText, similarity, adaptiveSimilarityCheck } = require('../../config/stringUtils');
+const { getUser, loadUsers } = require('../../config/userManager');
 
 async function processNewIncidence(client, message) {
   const chat = await message.getChat();
   const chatId = chat.id._serialized;
-  console.log("Procesando mensaje de Grupo de Incidencias.");
 
-  const normalizedMessage = normalizeText(message.body);
-  const cleanedMessage = normalizedMessage.replace(/[.,!?()]/g, '');
-  console.log(`Mensaje original: "${message.body}"`);
-  console.log(`Mensaje normalizado y limpio: "${cleanedMessage}"`);
+  const rawText = message.body || '';
+  const normalizedText = normalizeText(rawText);
+  const cleanedTokens = normalizedText.split(/\s+/);
+  const keywords = client.keywordsData;
 
-  if (!cleanedMessage.trim()) {
-    console.log("El mensaje está vacío tras la limpieza. Se omite.");
-    return;
-  }
-  const wordsSet = new Set(cleanedMessage.split(/\s+/));
+  let foundCategories = [];
+  let directRecipients = [];
 
-  const categories = ['it', 'ama', 'man', 'rs', 'seg'];
-  const keywordsData = client.keywordsData;
-  const categoryScores = {};
+  // === FILTRO 1: Usuarios mencionados (con fallback manual) ===
+  const mentionedIds = message.mentionedIds && message.mentionedIds.length
+    ? message.mentionedIds
+    : [...rawText.matchAll(/@([0-9]{11,15}@c\.us)/g)].map(m => m[1]);
 
-  for (let category of categories) {
-    const data = keywordsData.identificadores[category];
-    if (!data) continue;
+  console.log('🔍 Menciones detectadas:', mentionedIds);
 
-    let score = 0;
-
-    for (let keyword of data.palabras) {
-      const normKey = normalizeText(keyword);
-      for (let word of wordsSet) {
-        const sim = similarity(word, normKey);
-        if (sim >= 0.8) {
-          score += sim;
-          console.log(`✅ [${category}] "${word}" ~ "${keyword}" → +${sim.toFixed(2)}`);
-        }
+  for (const id of mentionedIds) {
+    console.log(`🔍 Evaluando mención: ${id}`);
+    const user = getUser(id);
+    console.log('🧠 Usuario cargado:', user);
+    if (user?.team) {
+      if (!foundCategories.includes(user.team)) {
+        foundCategories.push(user.team);
+        console.log(`✅ Filtro 1 → Categoría detectada por mención: ${user.team}`);
+      }
+      if (user.team === 'exp' && !directRecipients.includes(id)) {
+        directRecipients.push(id);
+        console.log(`📬 Usuario con destino directo agregado: ${id}`);
       }
     }
-
-    for (let phrase of data.frases) {
-      if (normalizedMessage.includes(normalizeText(phrase))) {
-        score += 1.2;
-        console.log(`✅ [${category}] coincidencia de frase: "${phrase}" → +1.2`);
-      }
-    }
-
-    categoryScores[category] = score;
   }
 
-  console.log("🏁 Resultado de puntuaciones por categoría:");
-  Object.entries(categoryScores).forEach(([cat, score]) => {
-    console.log(`→ ${cat.toUpperCase()}: ${score.toFixed(2)}`);
-  });
-
-  const threshold = 1.0;
-  const foundCategories = Object.entries(categoryScores)
-    .filter(([_, score]) => score >= threshold)
-    .map(([cat]) => cat);
-
+  // === FILTRO 2: Coincidencia exacta con palabras clave explícitas ===
   if (!foundCategories.length) {
-    console.log("No se encontró ninguna categoría en el mensaje.");
-    await message.reply(
-      "*🤖 No detecté ninguna incidencia en tu mensaje.*\n\n" +
-      "*Por favor indica a qué área va dirigida:*  \n\n" +
-      "▫️ IT (Sistemas) \n" +
-      "▫️ Mantenimiento (Mantenimiento) \n" +
-      "▫️ Ama de llaves (HSKP) \n" +
-      "▫️ Room service (RoomService) \n" +
-      "▫️ Seguridad (Seguridad) \n\n" +
-      "_Vuelve a intentarlo con un mensaje más claro._\n" +
-      "Ejemplo: 'Room service en 1010' para indicar Room Service."
-    );
+    const filtro1 = {
+      man: ['mant', 'manto', 'mantto', 'mantenimiento'],
+      it: ['sistemas', 'it'],
+      rs: ['roomservice'],
+      seg: ['seguridad']
+    };
+    for (const [cat, palabras] of Object.entries(filtro1)) {
+      if (palabras.some(p => cleanedTokens.includes(p))) {
+        foundCategories.push(cat);
+        console.log(`✅ Filtro 2 → Categoría detectada: ${cat}`);
+      }
+    }
+  }
+
+  // === FILTRO 3: Coincidencias por keywords.json ===
+  if (!foundCategories.length) {
+    const categorias = ['it', 'man', 'ama', 'rs', 'seg', 'exp'];
+    for (const cat of categorias) {
+      const data = keywords.identificadores[cat];
+      if (!data) continue;
+
+      const matchPalabra = data.palabras?.some(p =>
+        cleanedTokens.some(t => adaptiveSimilarityCheck(t, normalizeText(p)))
+      );
+      const matchFrase = data.frases?.some(f =>
+        normalizedText.includes(normalizeText(f))
+      );
+
+      if (matchPalabra || matchFrase) {
+        foundCategories.push(cat);
+        console.log(`✅ Filtro 3 → Coincidencia encontrada para categoría: ${cat}`);
+      }
+    }
+  }
+
+  // === Si aún no hay categorías válidas ===
+  if (!foundCategories.length) {
+    await chat.sendMessage("🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento).", { quotedMessageId: message.id._serialized });
+    console.warn("⚠️ No se detectó categoría. Mensaje ignorado.");
     return;
   }
 
+  // Preparar incidencia
   let confirmaciones = null;
   if (foundCategories.length > 1) {
     confirmaciones = {};
@@ -119,11 +126,10 @@ async function processNewIncidence(client, message) {
     }
     console.log("Incidencia registrada con ID:", lastID);
 
-    async function forwardMessage(targetGroupId, label) {
+    async function forwardMessage(targetId, label) {
       try {
-        const targetChat = await client.getChatById(targetGroupId);
-        const caption = `*Nueva tarea recibida (ID: ${lastID}):* \n\n` +
-          `✅ *${message.body}*`;
+        const targetChat = await client.getChatById(targetId);
+        const caption = `*Nueva tarea recibida (ID: ${lastID}):*\n\n✅ *${message.body}*`;
         if (mediaData) {
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });
@@ -131,31 +137,24 @@ async function processNewIncidence(client, message) {
           await targetChat.sendMessage(caption);
         }
       } catch (e) {
-        console.error(`Error al reenviar a ${label}:`, e);
+        console.error(`Error al reenviar a ${label || targetId}:", e`);
       }
     }
 
     if (foundCategories.includes('it')) await forwardMessage(config.groupBotDestinoId, 'IT');
     if (foundCategories.includes('man')) await forwardMessage(config.groupMantenimientoId, 'Mantenimiento');
     if (foundCategories.includes('ama')) await forwardMessage(config.groupAmaId, 'Ama de Llaves');
-    if (foundCategories.includes('rs')) await forwardMessage(config.groupRoomServiceId, 'Room Service');
-    if (foundCategories.includes('seg')) await forwardMessage(config.groupSeguridadId, 'Seguridad');
+    if (directRecipients.length) {
+      for (const id of directRecipients) {
+        await forwardMessage(id, 'Viceroy Connect');
+      }
+    }
 
-    const teamNames = {
-      it: 'IT',
-      ama: 'Ama de Llaves',
-      man: 'Mantenimiento',
-      rs: 'Room Service',
-      seg: 'Seguridad'
-    };
-    const teams = foundCategories.map(c => teamNames[c]);
-    const teamList = teams.join(teams.length > 1 ? ' y ' : '');
+    const teamNames = { it:'IT', ama:'Ama de Llaves', man:'Mantenimiento', exp:'Experiencia' };
+    const teams = foundCategories.map(c=>teamNames[c] || c);
+    let teamList = teams.join(teams.length>1?' y ':'');
 
-    await message.reply(`🤖 *El mensaje se ha enviado al equipo:* 
-
-✅ ${teamList}
-
-*ID:* ${lastID}`);
+    await chat.sendMessage(`*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`, { quotedMessageId: message.id._serialized });
 
     if (!chat.isGroup) {
       try {

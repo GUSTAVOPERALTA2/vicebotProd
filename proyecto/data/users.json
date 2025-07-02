@@ -2,81 +2,97 @@
   "5217751801318@c.us": {
     "nombre": "Gustavo Peralta",
     "cargo": "IT Aux",
-    "rol": "admin"
+    "rol": "admin",
+    "team": "it"
   },
   "5216241763977@c.us": {
     "nombre": "Tania Jiménez",
     "cargo": "IT Practicante",
-    "rol": "admin"
+    "rol": "admin",
+    "team": "it"
   },
   "5216242654986@c.us": {
     "nombre": "Héctor Sánchez",
     "cargo": "Supervisor Electromecánico",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216242307642@c.us": {
     "nombre": "Iván Reyes",
     "cargo": "Supervisor Villas",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216242437234@c.us": {
     "nombre": "Gilberto González",
     "cargo": "Supervisor Villas",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216241081431@c.us": {
     "nombre": "Adria Garciglia",
     "cargo": "Supervisora HOA",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216241712755@c.us": {
     "nombre": "Jonas Guerrero",
     "cargo": "Supervisor Jardinería",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216242449630@c.us": {
     "nombre": "Mauricio Bustamante",
     "cargo": "Supervisor Vespertino",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216241518830@c.us": {
     "nombre": "Eric Escobar",
     "cargo": "Supervisor Cuartos",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216253156748@c.us": {
     "nombre": "Leonardo Betanzo",
     "cargo": "Gte. Mantenimiento",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216242638103@c.us": {
     "nombre": "Jorge Rangel",
     "cargo": "Dir. Mantenimiento",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216242201518@c.us": {
     "nombre": "Keyner Cruz",
     "cargo": "Dir. Mantenimiento Residencias",
-    "rol": "user"
+    "rol": "user",
+    "team": "man"
   },
   "5216241192474@c.us": {
     "nombre": "Maribel Ramirez",
     "cargo": "Guest Experience Manager",
-    "rol": "admin"
+    "rol": "admin",
+    "team": "exp"
   },
   "5216242201467@c.us": {
     "nombre": "Omaly Martell",
     "cargo": "IT Assistant",
-    "rol": "admin"
+    "rol": "admin",
+    "team": "it"
   },
   "5216241661354@c.us": {
     "nombre": "Israel Flores",
     "cargo": "IT Manager",
-    "rol": "admin"
+    "rol": "admin",
+    "team": "it"
   },
   "5216242672198@c.us": {
     "nombre": "Viceroy Connect",
     "cargo": "Connect",
-    "rol": "admin"
+    "rol": "admin",
+    "team": "exp"
   }
 }

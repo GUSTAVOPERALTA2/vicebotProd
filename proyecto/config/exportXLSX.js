@@ -29,11 +29,11 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
 
   if (startDate) {
     clauses.push('fechaCreacion >= ?');
-    params.push(`${startDate}T00:00:00.000Z`);
+    params.push(moment.tz(startDate, 'America/Hermosillo').startOf('day').toISOString());
   }
   if (endDate) {
     clauses.push('fechaCreacion <= ?');
-    params.push(`${endDate}T23:59:59.999Z`);
+    params.push(moment.tz(endDate, 'America/Hermosillo').endOf('day').toISOString());
   }
   if (categories?.length) {
     clauses.push(
