@@ -6,6 +6,7 @@ const moment = require('moment-timezone');
 const { v4: uuidv4 } = require('uuid');
 const { normalizeText, similarity, adaptiveSimilarityCheck } = require('../../config/stringUtils');
 const { getUser, loadUsers } = require('../../config/userManager');
+const { safeReplyOrSend } = require('../../utils/messageUtils');
 
 async function processNewIncidence(client, message) {
   const chat = await message.getChat();
@@ -19,7 +20,6 @@ async function processNewIncidence(client, message) {
   let foundCategories = [];
   let directRecipients = [];
 
-  // === FILTRO 1: Usuarios mencionados (con fallback manual) ===
   const mentionedIds = message.mentionedIds && message.mentionedIds.length
     ? message.mentionedIds
     : [...rawText.matchAll(/@([0-9]{11,15}@c\.us)/g)].map(m => m[1]);
@@ -42,7 +42,6 @@ async function processNewIncidence(client, message) {
     }
   }
 
-  // === FILTRO 2: Coincidencia exacta con palabras clave explícitas ===
   if (!foundCategories.length) {
     const filtro1 = {
       man: ['mant', 'manto', 'mantto', 'mantenimiento'],
@@ -58,7 +57,6 @@ async function processNewIncidence(client, message) {
     }
   }
 
-  // === FILTRO 3: Coincidencias por keywords.json ===
   if (!foundCategories.length) {
     const categorias = ['it', 'man', 'ama', 'rs', 'seg', 'exp'];
     for (const cat of categorias) {
@@ -79,24 +77,12 @@ async function processNewIncidence(client, message) {
     }
   }
 
-  // === Si aún no hay categorías válidas ===
   if (!foundCategories.length) {
-    try {
-      await chat.sendMessage(
-        "🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento).",
-        { quotedMessageId: message.id._serialized }
-      );
-    } catch (err) {
-      console.error("❌ Error al enviar advertencia sin categoría (con cita):", err);
-      await chat.sendMessage(
-        "🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento)."
-      );
-    }
+    await safeReplyOrSend(chat, message, "🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento).");
     console.warn("⚠️ No se detectó categoría. Mensaje ignorado.");
     return;
   }
 
-  // Preparar incidencia
   let confirmaciones = null;
   if (foundCategories.length > 1) {
     confirmaciones = {};
@@ -147,7 +133,7 @@ async function processNewIncidence(client, message) {
           await targetChat.sendMessage(caption);
         }
       } catch (e) {
-        console.error(`Error al reenviar a ${label || targetId}:", e`);
+        console.error(`Error al reenviar a ${label || targetId}:`, e);
       }
     }
 
@@ -163,17 +149,10 @@ async function processNewIncidence(client, message) {
     const teamNames = { it:'IT', ama:'Ama de Llaves', man:'Mantenimiento', exp:'Experiencia' };
     const teams = foundCategories.map(c=>teamNames[c] || c);
     let teamList = teams.join(teams.length>1?' y ':'');
-    try {
-      await chat.sendMessage(
-        `*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`,
-        { quotedMessageId: message.id._serialized }
-      );
-    } catch (err) {
-      console.error("❌ Error al citar el mensaje original. Enviando sin cita:", err);
-      await chat.sendMessage(
-        `*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`
-      );
-    }
+
+    await safeReplyOrSend(
+      chat, message, `*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`);
+
     if (!chat.isGroup) {
       try {
         const mainChat = await client.getChatById(config.groupPruebaId);

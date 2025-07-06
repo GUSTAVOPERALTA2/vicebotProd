@@ -13,6 +13,7 @@ const { extractIdentifier }           = require('../../modules/incidenceManager/
 const incidenceDB                     = require('../../modules/incidenceManager/incidenceDB');
 const { normalizeText }               = require('../../config/stringUtils');
 const { getUser }                     = require('../../config/userManager');
+const { safeReplyOrSend } = require('../../utils/messageUtils');
 const moment = require('moment-timezone');
 
 async function handleMessage(client, message) {
@@ -227,12 +228,12 @@ if (activaReporte && requiereVerbo) {
           incidenceDB.cancelarIncidencia(incidenciaId, async err => {
             if (err) {
               console.error('❌ Error cancelando incidencia:', err);
-              await chat.sendMessage(`❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
+              await safeReplyOrSend(chat, message, `❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
             } else {
               const sender = message.author || message.from;
               const user   = getUser(sender);
               const who    = user ? `${user.nombre}(${user.cargo})` : sender;
-              await chat.sendMessage(`🤖✅  La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}`);
+              await safeReplyOrSend(chat, message, `🤖✅  La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}`);
             }
           });
           return;
@@ -287,12 +288,12 @@ if (activaReporte && requiereVerbo) {
           incidenceDB.cancelarIncidencia(incidenciaId, async err => {
             if (err) {
               console.error('❌ Error cancelando desde grupo:', err);
-              await chat.sendMessage(`❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
+              await safeReplyOrSend(chat, message, `❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
             } else {
               const sender = message.author || message.from;
               const user   = getUser(sender);
               const who    = user ? `${user.nombre}(${user.cargo})` : sender;
-              await chat.sendMessage(`🤖✅  *La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}*`);
+              await safeReplyOrSend(chat, message, `🤖✅  *La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}*`);
             }
           });
           return;
