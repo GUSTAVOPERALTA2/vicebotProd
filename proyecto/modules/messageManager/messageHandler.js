@@ -187,24 +187,35 @@ if (activaReporte && requiereVerbo) {
       const today = moment().tz("America/Hermosillo").format("YYYY-MM-DD");
 
       // 🗓️ Alias de fecha
-      if (/\b(hoy|actual|del dia)\b/.test(normalizedText)) partes.push('hoy');
+      if (/\b(hoy|actual|del dia)\b/.test(normalizedText)) {
+        partes.push('hoy');
+      }
       if (/\bayer\b/.test(normalizedText)) {
-        const ayer = moment().tz("America/Hermosillo").subtract(1, 'day').format("YYYY-MM-DD");
-        partes.push(ayer);
+        partes.push('ayer');
       }
       if (/\bmañana\b/.test(normalizedText)) {
-        const manana = moment().tz("America/Hermosillo").add(1, 'day').format("YYYY-MM-DD");
-        partes.push(manana);
+        partes.push('mañana');
       }
       if (/\bsemana pasada\b/.test(normalizedText)) {
-        const semanaPasadaInicio = moment().tz("America/Hermosillo").subtract(7, 'day').format("YYYY-MM-DD");
+        const semanaPasadaInicio = moment()
+          .tz("America/Hermosillo")
+          .subtract(7, 'day')
+          .format("YYYY-MM-DD");
         partes.push(`${semanaPasadaInicio}:${today}`);
       }
 
       // 📆 Rango explícito YYYY-MM-DD:YYYY-MM-DD
-      const rangoMatch = normalizedText.match(/\b(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\b/);
-      if (rangoMatch) partes.push(`${rangoMatch[1]}:${rangoMatch[2]}`);
-
+      const rangoMatch = normalizedText.match(
+        /\b(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\b/
+      );
+      if (rangoMatch) {
+        partes.push(`${rangoMatch[1]}:${rangoMatch[2]}`);
+      } else {
+        const solaMatch = normalizedBody.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+        if (solaMatch) {
+          partes.push(solaMatch[1]);
+        }
+      }
       // 🔁 Estado desde keywords
       for (let palabra of pendientesKW.palabras || []) {
         if (tokens.has(normalizeText(palabra))) {
