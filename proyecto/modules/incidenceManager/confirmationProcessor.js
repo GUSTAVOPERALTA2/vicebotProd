@@ -50,8 +50,6 @@ async function processConfirmation(client, message) {
       console.error('❌ Error al obtener incidencia en processConfirmation:', err);
       return;
     }
-    console.log('✅ Incidencia cargada en processConfirmation:', incidencia);
-
     const requiredTeams = incidencia.categoria
       .split(',')
       .map(c => c.trim().toLowerCase());
@@ -66,6 +64,14 @@ async function processConfirmation(client, message) {
       categoriaEquipo = requiredTeams[0];
       console.log('🔍 processConfirmation: confirmación desde DM, categoría asumida =', categoriaEquipo);
     }
+    
+    // ⛔ Validar si ya fue confirmada por este equipo
+    if (incidencia.confirmaciones && incidencia.confirmaciones[categoriaEquipo]) {
+      console.log(`⚠️ La incidencia ${incidenciaId} ya fue confirmada por ${categoriaEquipo}, ignorando duplicado.`);
+      await safeReplyOrSend(chat, message, `🤖 Esta tarea ya fue marcada como completada por *${categoriaEquipo.toUpperCase()}* anteriormente.`);
+      return;
+    }
+    console.log('✅ Incidencia cargada en processConfirmation:', incidencia);
 
     const nowTs = new Date().toISOString();
     incidencia.confirmaciones = (incidencia.confirmaciones && typeof incidencia.confirmaciones === 'object')
@@ -132,6 +138,17 @@ async function processConfirmation(client, message) {
 
           const mainChat = await client.getChatById(config.groupPruebaId);
           await mainChat.sendMessage(finalMsg);
+          // Notificar a cada grupo destino individual cuando ya se completaron todas las fases
+          for (const team of requiredTeams) {
+            const groupId = config.destinoGrupos[team];
+            if (!groupId) continue;
+            try {
+              const teamChat = await client.getChatById(groupId);
+              await teamChat.sendMessage(`✅ *La incidencia ID ${inc.id} ha sido completada por:* ${inc.completadoPorNombre}`);
+            } catch (e) {
+              console.warn(`⚠️ No se pudo notificar al grupo de ${team}:`, e);
+            }
+          }
         }
       );
       return;
@@ -153,16 +170,28 @@ async function processConfirmation(client, message) {
     const faseString   = `${currentPhase}/${totalTeams}`;
     await new Promise(res => updateFase(incidenciaId, faseString, res));
 
+    const completedJid  = message.author || message.from;
+    const userRec       = getUser(completedJid);
+    const completedName = userRec ? userRec.nombre : completedJid;
+    const formattedTime = formatDate(nowTs);
+    const confirmMsg    = `🤖✅ *Incidencia (ID: ${incidenciaId}) confirmada fase ${faseString} por ${completedName} el ${formattedTime}*`;
+
+    // ✅ Enviar confirmación inmediata al grupo que respondió
+    await chat.sendMessage(confirmMsg);
+
     if (currentPhase < totalTeams) {
       const partial = buildPartialMessage(incidencia, requiredTeams, confirmedTeams, historyArray, faseString);
+
+      // ✅ Enviar resumen de fase al grupo origen y principal
       await originChat.sendMessage(partial);
       await mainChat.sendMessage(partial);
 
-      const completedJid  = message.author || message.from;
-      const userRec       = getUser(completedJid);
-      const completedName = userRec ? userRec.nombre : completedJid;
-      const formattedTime = formatDate(nowTs);
-      await safeReplyOrSend(chat, quotedMsg, `🤖✅ *Incidencia (ID: ${incidenciaId}) confirmada fase ${faseString} por ${completedName} el ${formattedTime}*`);
+      // ✅ También repetir confirmación en grupo propio si no es el mismo que "chat"
+      const ownGroupId = config.destinoGrupos[categoriaEquipo];
+      if (ownGroupId && ownGroupId !== chatId) {
+        const groupChat = await client.getChatById(ownGroupId);
+        await groupChat.sendMessage(confirmMsg);
+      }
     }
     else {
       const confirmersList = confirmedTeams

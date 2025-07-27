@@ -8,6 +8,12 @@ const { normalizeText, similarity, adaptiveSimilarityCheck } = require('../../co
 const { getUser, loadUsers } = require('../../config/userManager');
 const { safeReplyOrSend } = require('../../utils/messageUtils');
 
+function formatTeamsList(list) {
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return `${list[0]} y ${list[1]}`;
+  return `${list.slice(0, -1).join(', ')} y ${list[list.length - 1]}`;
+}
+
 async function processNewIncidence(client, message) {
   const chat = await message.getChat();
   const chatId = chat.id._serialized;
@@ -47,7 +53,8 @@ async function processNewIncidence(client, message) {
       man: ['mant', 'manto', 'mantto', 'mantenimiento'],
       it: ['sistemas', 'it'],
       rs: ['roomservice'],
-      seg: ['seguridad']
+      seg: ['seguridad'],
+      ama: ['ama', 'ama de llaves', 'ama de llaves', 'hskp'],
     };
     for (const [cat, palabras] of Object.entries(filtro1)) {
       if (palabras.some(p => cleanedTokens.includes(p))) {
@@ -138,6 +145,8 @@ async function processNewIncidence(client, message) {
     }
 
     if (foundCategories.includes('it')) await forwardMessage(config.groupBotDestinoId, 'IT');
+    if (foundCategories.includes('seg')) await forwardMessage(config.groupSeguridadId, 'Seguridad');
+    if (foundCategories.includes('rs')) await forwardMessage(config.groupRoomServiceId, 'Room Service');
     if (foundCategories.includes('man')) await forwardMessage(config.groupMantenimientoId, 'Mantenimiento');
     if (foundCategories.includes('ama')) await forwardMessage(config.groupAmaId, 'Ama de Llaves');
     if (directRecipients.length) {
@@ -146,9 +155,9 @@ async function processNewIncidence(client, message) {
       }
     }
 
-    const teamNames = { it:'IT', ama:'Ama de Llaves', man:'Mantenimiento', exp:'Experiencia' };
+    const teamNames = { it:'IT', ama:'Ama de Llaves', man:'Mantenimiento', exp:'Experiencia', seg:'Seguridad', rs:'Room Service' };
     const teams = foundCategories.map(c=>teamNames[c] || c);
-    let teamList = teams.join(teams.length>1?' y ':'');
+    let teamList = formatTeamsList(teams);
 
     await safeReplyOrSend(
       chat, message, `*🤖 El mensaje se ha enviado al equipo:* \n\n ✅ ${teamList}\n\n*ID: ${lastID}*`);
