@@ -29,43 +29,59 @@ async function handleCommands(client, message) {
     const helpMessage =
   `¡Hola! 👋 Soy tu asistente de incidencias. Esto es lo que puedo hacer por ti:
 
-  • **Ver tareas por categoría**  
+  • *Ver tareas por categoría*  
     – Ejemplo: “Muéstrame las tareas de IT”  
     – Equivalente a: /tareas it
 
-  • **Ver tareas pendientes**  
+  • *Ver tareas pendientes*  
     – Ejemplo: “¿Qué tareas pendientes tiene mantenimiento?”  
     – Equivalente a: /tareas pendiente man
 
-  • **Ver tareas completadas**  
+  • *Ver tareas completadas*  
     – Ejemplo: “Muéstrame las tareas completadas de ama de llaves”  
     – Equivalente a: /tareas completada ama
 
-  • **Buscar tareas de hoy**  
+  • *Buscar tareas de hoy*  
     – Ejemplo: “¿Qué tareas hay de hoy?”  
     – Equivalente a: /tareas hoy
 
-  • **Buscar por fecha o rango**  
+  • *Buscar por fecha o rango*  
     – Ejemplo: “Tareas del 2025-06-01 al 2025-06-10”  
     – Equivalente a: /tareas 2025-06-01:2025-06-10
 
-  • **Detalles de una tarea**  
+  • *Detalles de una tarea*  
     – Ejemplo: “Dime los detalles de la tarea 12”  
     – Equivalente a: /tareaDetalles 12
 
-  • **Cancelar una tarea**  
+  • *Cancelar una tarea*  
     – Ejemplo: “Cancela la tarea 7”  
     – Equivalente a: /cancelarTarea 7
 
-  • **Generar reportes**  
+  ▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️
+
+  • *Generar reportes*  
     – Ejemplo: “Genera un reporte de hoy para IT completadas”  
     – Equivalente a: /generarReporte hoy it completada
 
-  ¡Pruébame con palabras naturales o usando los comandos directos! 😊`;
+    *Puedes combinar los siguientes parámetros (en cualquier orden):*
 
-      await chat.sendMessage(helpMessage);
+    - Fecha: hoy, ayer, YYYY-MM-DD o rango (YYYY-MM-DD:YYYY-MM-DD)  
+    - Estado: pendiente, completada, cancelada  
+    - Área: it, mantenimiento, hskp, roomservice, seguridad
+
+    *Ejemplos válidos:*  
+    • Generar reporte it pendiente  
+    • Generar reporte 2025-06-15 completada rs  
+    • Generar reporte 2025-06-01:2025-06-10 ama
+  
+  ✅ Puedes escribirme con lenguaje natural o usar los comandos directos.
+
+  Estoy listo para ayudarte 😊`;
+
+  await chat.sendMessage(helpMessage);
       return true;
     }
+  
 
   // Comando para administradores: /helpadmin
   if (normalizedBody.startsWith('/helpadmin')) {

@@ -9,6 +9,26 @@ const ChartJSNodeCanvas = require('chartjs-node-canvas').ChartJSNodeCanvas;
 const { formatDate } = require('./dateUtils');
 const { getUser } = require('./userManager');
 
+function limpiarReportesAntiguos(dirPath, maxArchivos = 20) {
+  try {
+    const archivos = fs.readdirSync(dirPath)
+      .map(name => ({
+        name,
+        time: fs.statSync(path.join(dirPath, name)).mtime.getTime()
+      }))
+      .sort((a, b) => b.time - a.time); // más recientes primero
+
+    const archivosExcedentes = archivos.slice(maxArchivos);
+    for (const archivo of archivosExcedentes) {
+      fs.unlinkSync(path.join(dirPath, archivo.name));
+      console.log(`🗑️ Reporte eliminado: ${archivo.name}`);
+    }
+  } catch (err) {
+    console.error('❌ Error limpiando reportes antiguos:', err);
+  }
+}
+
+
 /**
  * exportXLSX - Exporta las incidencias a un archivo XLSX con:
  *  - Hoja Resumen con encabezado, logo y gráfica (opcional)
@@ -276,6 +296,7 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
   const outputPath = path.join(reportsDir, filename);
 
   await workbook.xlsx.writeFile(outputPath);
+  limpiarReportesAntiguos(reportsDir); // 🔄 Eliminar archivos antiguos
   return outputPath;
 }
 
@@ -304,3 +325,4 @@ if (require.main === module) {
     .then(p => console.log('Reporte generado en:', p))
     .catch(console.error);
 }
+

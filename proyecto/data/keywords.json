@@ -227,13 +227,67 @@
       "instrucciones"
     ],
     "frases": [
-      "necesito ayuda",
       "qué comandos hay",
       "cómo uso el bot",
       "qué puedo hacer"
     ]
   },
   "intenciones": {
+    "ayudaReporte": {
+      "palabras": [
+        "reporte",
+        "reportes",
+        "estadísticas",
+        "informes",
+        "tareas"
+      ],
+      "frases": [
+        "cómo hago un reporte",
+        "cómo generar un reporte",
+        "cómo ver un reporte",
+        "cómo se genera un informe",
+        "necesito ayuda con el reporte",
+        "explica cómo generar reportes",
+        "cómo se usa el reporte",
+        "ayuda con los reportes",
+        "para qué sirve el reporte"
+      ]
+    },
+    "cancelarTarea": {
+      "palabras": [
+        "cancelar",
+        "anular",
+        "descartar",
+        "eliminar",
+        "cancela"
+      ],
+      "frases": [
+        "cancelar tarea",
+        "anula la tarea",
+        "quiero cancelar la tarea",
+        "descarta tarea"
+      ]
+    },
+    "tareaDetalles": {
+      "palabras": [
+        "ver",
+        "mostrar",
+        "detalles",
+        "info",
+        "información",
+        "informacion",
+        "detalle",
+        "detalle de tarea",
+        "detalle de incidencia",
+        "detalle de incidencia"
+      ],
+      "frases": [
+        "ver detalles",
+        "mostrar detalles",
+        "info de tarea",
+        "información de tarea"
+      ]
+    },
     "tareasPendientes": {
       "palabras": [
         "pendiente",
@@ -241,13 +295,69 @@
         "falta",
         "faltan",
         "quedan",
-        "incompletas"
+        "incompletas",
+        "incompleto",
+        "sin hacer",
+        "sin completar",
+        "sin terminar",
+        "sin finalizar",
+        "sin concluir",
+        "sin cumplir",
+        "sin realizar",
+        "sin ejecutar",
+        "sin llevar a cabo",
+        "sin atender",
+        "incompletas",
+        "incompleto"
       ],
       "frases": [
         "tareas sin hacer",
+        "Hay tareas sin hacer",
         "por hacer",
         "cosas que faltan",
         "tareas pendientes"
+      ]
+    },
+    "tareasCompletadas": {
+      "palabras": [
+        "completada",
+        "completadas",
+        "finalizada",
+        "finalizadas",
+        "terminada",
+        "terminaron",
+        "terminado",
+        "terminadas",
+        "concluida",
+        "concluidas",
+        "cumplida",
+        "cumplidas",
+        "hecho",
+        "hecha",
+        "hechas",
+        "realizada",
+        "realizadas",
+        "resuelta",
+        "resueltas"
+      ],
+      "frases": [
+        "tareas completadas",
+        "cosas finalizadas",
+        "tareas terminadas"
+      ]
+    },
+    "tareasCanceladas": {
+      "palabras": [
+        "cancelada",
+        "canceladas",
+        "anulada",
+        "anularon",
+        "descartada",
+        "descartadas"
+      ],
+      "frases": [
+        "tareas canceladas",
+        "cosas descartadas"
       ]
     },
     "generarReporte": {
@@ -255,15 +365,7 @@
         "reporte",
         "reportes",
         "estadísticas",
-        "pendientes",
-        "completadas",
-        "canceladas",
-        "hoy",
-        "it",
-        "ama",
-        "room",
-        "seguridad",
-        "mantenimiento"
+        "hoy"
       ],
       "frases": [
         "generar reporte",
@@ -295,15 +397,30 @@
     },
     "tareas": {
       "frases": [
-        "que tareas tiene",
+        "qué tareas hay",
+        "muéstrame las tareas",
         "ver tareas de",
         "dime las tareas de",
-        "mostrar tareas de"
+        "mostrar tareas de",
+        "cuáles son las tareas",
+        "quiero ver las tareas",
+        "necesito ver las tareas",
+        "pendientes de",
+        "mostrar pendientes de",
+        "tareas asignadas a",
+        "revisar tareas de"
       ],
       "palabras": [
-        "tareas",
+        "pendientes",
+        "completadas",
+        "canceladas",
+        "actividades",
         "asignadas",
-        "actividades"
+        "pendiente",
+        "completado",
+        "actividad",
+        "estado",
+        "historial"
       ]
     }
   }

@@ -13,6 +13,7 @@ const { extractIdentifier }           = require('../../modules/incidenceManager/
 const incidenceDB                     = require('../../modules/incidenceManager/incidenceDB');
 const { normalizeText }               = require('../../config/stringUtils');
 const { getUser }                     = require('../../config/userManager');
+const { safeReplyOrSend } = require('../../utils/messageUtils');
 const moment = require('moment-timezone');
 
 async function handleMessage(client, message) {
@@ -101,32 +102,78 @@ if (activaReporte && requiereVerbo) {
       console.log('→ Intención "ayuda" detectada, redirigiendo a /ayuda');
     }
 
-    // === INTENCIÓN NATURAL: detalles de incidencia ===
-    const detallesMatch = normalizedText.match(
-      /(?:ver|mu[eé]strame|mostrar).*(?:detalle|detalles|info|informaci[oó]n).*?(\d{1,6})/
-    );
-    if (detallesMatch && !normalizedBody.startsWith('/tareadetalles')) {
-      const incidenciaId = detallesMatch[1];
-      message.body = `/tareaDetalles ${incidenciaId}`;
-      console.log(`  → Intención "detalles" detectada, redirigiendo a ${message.body}`);
+    // === INTENCIÓN NATURAL: cancelar tarea ===
+    const cancelKW = client.keywordsData.intenciones.cancelarTarea || {};
+    const cancelFrases = cancelKW.frases || [];
+    const cancelPalabras = cancelKW.palabras || [];
+
+    let activaCancel = false;
+    for (let frase of cancelFrases) {
+      if (normalizedText.includes(normalizeText(frase))) {
+        activaCancel = true;
+        break;
+      }
+    }
+    if (!activaCancel) {
+      for (let palabra of cancelPalabras) {
+        if (tokens.has(normalizeText(palabra))) {
+          activaCancel = true;
+          break;
+        }
+      }
+    }
+    if (activaCancel) {
+      const idMatch = normalizedText.match(/\b(\d{1,6})\b/);
+      if (idMatch) {
+        message.body = `/cancelarTarea ${idMatch[1]}`;
+        console.log(`  → Intención "cancelar tarea" detectada, redirigiendo a ${message.body}`);
+      }
     }
 
+    // === INTENCIÓN NATURAL: detalles de incidencia ===
+    const detallesKW = client.keywordsData.intenciones.tareaDetalles || {};
+    const frasesDetalles = detallesKW.frases || [];
+    const palabrasDetalles = detallesKW.palabras || [];
 
-    
+    let activaDetalles = false;
+    for (let frase of frasesDetalles) {
+      if (normalizedText.includes(normalizeText(frase))) {
+        activaDetalles = true;
+        break;
+      }
+    }
+    if (!activaDetalles) {
+      for (let palabra of palabrasDetalles) {
+        if (tokens.has(normalizeText(palabra))) {
+          activaDetalles = true;
+          break;
+        }
+      }
+    }
+
+    if (activaDetalles && !normalizedBody.startsWith('/tareadetalles') && !normalizedBody.startsWith('/cancelar')) {
+      const idMatch = normalizedText.match(/\b(\d{1,6})\b/);
+      if (idMatch) {
+        message.body = `/tareaDetalles ${idMatch[1]}`;
+        console.log(`  → Intención "tareaDetalles" detectada, redirigiendo a ${message.body}`);
+      }
+    }
+
     // === INTENCIÓN: mostrar tareas por categoría ===
-    const tareasIntent = intents.tareas || {};
-    const tareasFrases = tareasIntent.frases || [];
-    const tareasPalabras = tareasIntent.palabras || [];
+    const tareasKW        = client.keywordsData.intenciones.tareas || {};
+    const pendientesKW    = client.keywordsData.intenciones.tareasPendientes || {};
+    const completadasKW   = client.keywordsData.intenciones.tareasCompletadas || {};
+    const canceladasKW    = client.keywordsData.intenciones.tareasCanceladas || {};
 
     let activaTareas = false;
-    for (let frase of tareasFrases) {
+    for (let frase of tareasKW.frases || []) {
       if (normalizedText.includes(normalizeText(frase))) {
         activaTareas = true;
         break;
       }
     }
     if (!activaTareas) {
-      for (let palabra of tareasPalabras) {
+      for (let palabra of tareasKW.palabras || []) {
         if (tokens.has(normalizeText(palabra))) {
           activaTareas = true;
           break;
@@ -134,60 +181,92 @@ if (activaReporte && requiereVerbo) {
       }
     }
 
-    if (activaTareas && !/^\/tareas(\s|$)/.test(normalizedText)) {
-    const partes = [];
-    const today = moment().tz("America/Hermosillo").format("YYYY-MM-DD");
+    // Si ya se activó otro comando como /generarReporte, no continuar
+    if (activaTareas && !/^\/tareas(\s|$)/.test(message.body || '') && !/^\/generarReporte\b/.test(message.body || '')) {
+      const partes = [];
+      const today = moment().tz("America/Hermosillo").format("YYYY-MM-DD");
 
-    // 🗓️ Alias de fecha
-    if (/\b(hoy|actual|del dia)\b/.test(normalizedText)) {
-      partes.push('hoy');
-    }
-    if (/\bayer\b/.test(normalizedText)) {
-      const ayer = moment().tz("America/Hermosillo").subtract(1, 'day').format("YYYY-MM-DD");
-      partes.push(ayer);
-    }
-    if (/\bmañana\b/.test(normalizedText)) {
-      const manana = moment().tz("America/Hermosillo").add(1, 'day').format("YYYY-MM-DD");
-      partes.push(manana);
-    }
-    if (/\bsemana pasada\b/.test(normalizedText)) {
-      const semanaPasadaInicio = moment().tz("America/Hermosillo").subtract(7, 'day').format("YYYY-MM-DD");
-      partes.push(`${semanaPasadaInicio}:${today}`);
-    }
+      // 🗓️ Alias de fecha
+      if (/\b(hoy|actual|del dia)\b/.test(normalizedText)) partes.push('hoy');
+      if (/\bayer\b/.test(normalizedText)) {
+        const ayer = moment().tz("America/Hermosillo").subtract(1, 'day').format("YYYY-MM-DD");
+        partes.push(ayer);
+      }
+      if (/\bmañana\b/.test(normalizedText)) {
+        const manana = moment().tz("America/Hermosillo").add(1, 'day').format("YYYY-MM-DD");
+        partes.push(manana);
+      }
+      if (/\bsemana pasada\b/.test(normalizedText)) {
+        const semanaPasadaInicio = moment().tz("America/Hermosillo").subtract(7, 'day').format("YYYY-MM-DD");
+        partes.push(`${semanaPasadaInicio}:${today}`);
+      }
 
-    // 📆 Rango explícito YYYY-MM-DD:YYYY-MM-DD
-    const rangoMatch = normalizedText.match(/\b(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\b/);
-    if (rangoMatch) {
-      partes.push(`${rangoMatch[1]}:${rangoMatch[2]}`);
-    }
+      // 📆 Rango explícito YYYY-MM-DD:YYYY-MM-DD
+      const rangoMatch = normalizedText.match(/\b(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})\b/);
+      if (rangoMatch) partes.push(`${rangoMatch[1]}:${rangoMatch[2]}`);
 
-    // 🔁 Estado
-    if (/\b(pendiente|pendientes|falta|faltan|quedan)\b/.test(normalizedText)) partes.push('pendiente');
-    if (/\b(completada|completadas|finalizada|terminada)\b/.test(normalizedText)) partes.push('completada');
-    if (/\b(cancelada|canceladas|anulada|anularon)\b/.test(normalizedText)) partes.push('cancelada');
+      // 🔁 Estado desde keywords
+      for (let palabra of pendientesKW.palabras || []) {
+        if (tokens.has(normalizeText(palabra))) {
+          partes.push('pendiente');
+          break;
+        }
+      }
+      for (let frase of pendientesKW.frases || []) {
+        if (normalizedText.includes(normalizeText(frase))) {
+          partes.push('pendiente');
+          break;
+        }
+      }
 
-    // 📂 Categoría
-    const categorias = {
-      it: /(it|sistemas|soporte|t[eé]cnico)/,
-      ama: /(ama|limpieza|hskp|camarista)/,
-      rs: /(room|room service|habitaciones|alimentos)/,
-      seg: /(seguridad|guardia|proteccion)/,
-      man: /(mantenimiento|reparaciones|averia|t[eé]cnico)/
-    };
-    for (let [cat, regex] of Object.entries(categorias)) {
-      if (regex.test(normalizedText)) {
-        partes.push(cat);
-        break;
+      for (let palabra of completadasKW.palabras || []) {
+        if (tokens.has(normalizeText(palabra))) {
+          partes.push('completada');
+          break;
+        }
+      }
+      for (let frase of completadasKW.frases || []) {
+        if (normalizedText.includes(normalizeText(frase))) {
+          partes.push('completada');
+          break;
+        }
+      }
+
+      for (let palabra of canceladasKW.palabras || []) {
+        if (tokens.has(normalizeText(palabra))) {
+          partes.push('cancelada');
+          break;
+        }
+      }
+      for (let frase of canceladasKW.frases || []) {
+        if (normalizedText.includes(normalizeText(frase))) {
+          partes.push('cancelada');
+          break;
+        }
+      }
+
+      // 📂 Categoría
+      const categorias = {
+        it: /(it|sistemas|soporte|t[eé]cnico)/,
+        ama: /(ama|limpieza|hskp|camarista)/,
+        rs: /(room|room service|habitaciones|alimentos)/,
+        seg: /(seguridad|guardia|proteccion)/,
+        man: /(mantenimiento|reparaciones|averia|t[eé]cnico)/
+      };
+      for (let [cat, regex] of Object.entries(categorias)) {
+        if (regex.test(normalizedText)) {
+          partes.push(cat);
+          break;
+        }
+      }
+
+      // Si encontramos al menos un parámetro, generamos el comando
+      if (partes.length > 0) {
+        const generated = `/tareas ${partes.join(' ')}`;
+        console.log('  → Activando tareas con mensaje:', generated);
+        message.body = generated;
       }
     }
-
-    // Si encontramos al menos un parámetro, generamos el comando
-    if (partes.length > 0) {
-      const generated = `/tareas ${partes.join(' ')}`;
-      console.log('  → Activando tareas con mensaje:', generated);
-      message.body = generated;
-    }
-  }
 
 
     
@@ -227,12 +306,12 @@ if (activaReporte && requiereVerbo) {
           incidenceDB.cancelarIncidencia(incidenciaId, async err => {
             if (err) {
               console.error('❌ Error cancelando incidencia:', err);
-              await chat.sendMessage(`❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
+              await safeReplyOrSend(chat, message, `❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
             } else {
               const sender = message.author || message.from;
               const user   = getUser(sender);
               const who    = user ? `${user.nombre}(${user.cargo})` : sender;
-              await chat.sendMessage(`🤖✅  La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}`);
+              await safeReplyOrSend(chat, message, `🤖✅  La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}`);
             }
           });
           return;
@@ -243,6 +322,18 @@ if (activaReporte && requiereVerbo) {
         const isConfirmPhrase = (confirmKW.frases   || []).some(f => responseText.includes(normalizeText(f)));
         if (isConfirmWord || isConfirmPhrase) {
           console.log('    • DM + cita → CONFIRMACIÓN detectada para ID', incidenciaId);
+
+          const inc = await new Promise((res, rej) =>
+            incidenceDB.getIncidenciaById(incidenciaId, (err, row) => err ? rej(err) : res(row))
+          );
+          if (!inc) return;
+
+          if (inc.estado === 'completada') {
+            await safeReplyOrSend(chat, message, `⚠️ La incidencia ID ${incidenciaId} ya fue marcada como completada anteriormente.`);
+            console.log(`  • ID ${incidenciaId} ya está completada. Ignorando nueva confirmación.`);
+            return;
+          }
+
           await processConfirmation(client, message);
           return;
         }
@@ -287,12 +378,12 @@ if (activaReporte && requiereVerbo) {
           incidenceDB.cancelarIncidencia(incidenciaId, async err => {
             if (err) {
               console.error('❌ Error cancelando desde grupo:', err);
-              await chat.sendMessage(`❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
+              await safeReplyOrSend(chat, message, `❌ No se pudo cancelar la incidencia ID ${incidenciaId}.`);
             } else {
               const sender = message.author || message.from;
               const user   = getUser(sender);
               const who    = user ? `${user.nombre}(${user.cargo})` : sender;
-              await chat.sendMessage(`🤖✅  *La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}*`);
+              await safeReplyOrSend(chat, message, `🤖✅  *La incidencia ID: ${incidenciaId} ha sido cancelada por ${who}*`);
             }
           });
           return;
@@ -303,6 +394,18 @@ if (activaReporte && requiereVerbo) {
         const isConfirmPhrase3 = (confirmKW3.frases || []).some(f => responseText.includes(normalizeText(f)));
         if (isConfirmWord3 || isConfirmPhrase3) {
           console.log('    • Grupo + cita → CONFIRMACIÓN detectada para ID', incidenciaId);
+
+          const inc = await new Promise((res, rej) =>
+            incidenceDB.getIncidenciaById(incidenciaId, (err, row) => err ? rej(err) : res(row))
+          );
+          if (!inc) return;
+
+          if (inc.estado === 'completada') {
+            await safeReplyOrSend(chat, message, `⚠️ La incidencia ID ${incidenciaId} ya fue marcada como completada anteriormente.`);
+            console.log(`  • ID ${incidenciaId} ya está completada. Ignorando nueva confirmación.`);
+            return;
+          }
+
           await processConfirmation(client, message);
           return;
         }

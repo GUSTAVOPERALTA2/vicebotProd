@@ -11,6 +11,18 @@
     "rol": "admin",
     "team": "it"
   },
+    "5216242201467@c.us": {
+    "nombre": "Omaly Martell",
+    "cargo": "IT Assistant",
+    "rol": "admin",
+    "team": "it"
+  },
+  "5216241661354@c.us": {
+    "nombre": "Israel Flores",
+    "cargo": "IT Manager",
+    "rol": "admin",
+    "team": "it"
+  },
   "5216242654986@c.us": {
     "nombre": "Héctor Sánchez",
     "cargo": "Supervisor Electromecánico",
@@ -71,23 +83,101 @@
     "rol": "user",
     "team": "man"
   },
+  "5216241684889@c.us": {
+    "nombre": "Margarita Fernandez",
+    "cargo": "Dir. Ejec. HSKP",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241155397@c.us": {
+    "nombre": "Luis Perez",
+    "cargo": "Gerente Asist. HSKP",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241924860@c.us": {
+    "nombre": "Mayra Alonso",
+    "cargo": "Sup. de hotel",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241548263@c.us": {
+    "nombre": "Ruth Medina",
+    "cargo": "Sup. de villas",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241383889@c.us": {
+    "nombre": "Beatriz Sanhez",
+    "cargo": "Sup. de villas",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241564287@c.us": {
+    "nombre": "Teresa Papayanopulos",
+    "cargo": "Sup. de villas",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241513669@c.us": {
+    "nombre": "Carmelo Beatriz",
+    "cargo": "Sup. de hotel",
+    "rol": "user",
+    "team": "ama"
+  },
+    "5216242196373@c.us": {
+    "nombre": "Erick Vazquez",
+    "cargo": "Sup. de hotel",
+    "rol": "user",
+    "team": "ama"
+  },
+    "5216242307124@c.us": {
+    "nombre": "Lourdes Patricia",
+    "cargo": "Sup. de hotel",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241825937@c.us": {
+    "nombre": " Yadira Juarez",
+    "cargo": "Supervisora",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216242645695@c.us": {
+    "nombre": "Isaias Santa Fe",
+    "cargo": "Jefe de lavanderia",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241915099@c.us": {
+    "nombre": "David Camino",
+    "cargo": "Sup. de lavanderia",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241687545@c.us": {
+    "nombre": "Enrique Ponce",
+    "cargo": "Jefe de Areas Publicas",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216241258684@c.us": {
+    "nombre": "Abelardo Perez",
+    "cargo": "Sup. Areas Publicas",
+    "rol": "user",
+    "team": "ama"
+  },
+  "5216242243070@c.us": {
+    "nombre": "Rafael Martinez",
+    "cargo": "Supervisor de Areas Publicas",
+    "rol": "user",
+    "team": "ama"
+  },
   "5216241192474@c.us": {
     "nombre": "Maribel Ramirez",
     "cargo": "Guest Experience Manager",
     "rol": "admin",
     "team": "exp"
-  },
-  "5216242201467@c.us": {
-    "nombre": "Omaly Martell",
-    "cargo": "IT Assistant",
-    "rol": "admin",
-    "team": "it"
-  },
-  "5216241661354@c.us": {
-    "nombre": "Israel Flores",
-    "cargo": "IT Manager",
-    "rol": "admin",
-    "team": "it"
   },
   "5216242672198@c.us": {
     "nombre": "Viceroy Connect",
