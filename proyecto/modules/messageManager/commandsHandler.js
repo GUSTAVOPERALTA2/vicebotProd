@@ -103,7 +103,9 @@ async function handleCommands(client, message) {
       "*/registerUser <id> | <nombre-apellido> | <cargo> | <rol>* \n Registra un usuario.\n\n" +
       "*/editUser <id> | <nombre-apellido> | <cargo> | <rol>* \n Edita la información de un usuario.\n\n" +
       "*/removeUser <id>* \n Elimina un usuario.\n\n" +
-      "*/viewUser* \n Muestra la lista de usuarios registrados.\n\n";
+      "*/viewUser* \n Muestra la lista de usuarios registrados.\n\n" +
+      "*/deleteid <id>* \n Elimina registro unico\n\n" +
+      "*/megadeth* \n Elimina todos los registros de la BD ¡CUIDADO! \n\n";
       
     await chat.sendMessage(helpAdminMessage);
     return true;
@@ -413,6 +415,82 @@ if (normalizedBody.startsWith('/generarreporte')) {
     await chat.sendMessage(`Tu ID es: ${senderId}`);
     return true;
   }
+
+  // Comando: /megadeth → elimina todos los registros y reinicia el contador ID
+  if (normalizedBody.startsWith('/megadeth')) {
+    const chat = await message.getChat();
+
+    // Opcional: solo permitir admin
+    const sender = message.author || message.from;
+    const user = getUser(sender);
+    if (!user || user.rol !== 'admin') {
+      await message.reply("❌ No tienes permisos para ejecutar este comando.");
+      return true;
+    }
+
+    try {
+      const db = incidenceDB.getDB();
+      await new Promise((resolve, reject) => {
+        db.serialize(() => {
+          db.run("DELETE FROM incidencias", function (err) {
+            if (err) return reject(err);
+          });
+          db.run("DELETE FROM sqlite_sequence WHERE name='incidencias'", function (err) {
+            if (err) return reject(err);
+          });
+          resolve();
+        });
+      });
+
+      await message.reply("🤖💥 *Todos los registros han sido eliminados y el contador de IDs reiniciado (MEGADETH).*");
+      console.log(`⚠️ Base de datos limpiada y contador reiniciado por comando /megadeth ejecutado por ${sender}`);
+    } catch (err) {
+      console.error("❌ Error ejecutando /megadeth:", err);
+      await message.reply("❌ Error al limpiar la base de datos y reiniciar el contador.");
+    }
+
+    return true;
+  }
+
+  // Comando: /deleteid <ID> → elimina solo un registro de la BD
+  if (normalizedBody.startsWith('/deleteid')) {
+    const args = normalizedBody.split(/\s+/).slice(1); // obtener el ID
+    const chat = await message.getChat();
+
+    if (args.length === 0 || isNaN(args[0])) {
+      await message.reply("❌ Debes especificar un ID válido. Ejemplo: /deleteid 5");
+      return true;
+    }
+
+    const incidenciaId = parseInt(args[0], 10);
+
+    // Opcional: solo admin
+    const sender = message.author || message.from;
+    const user = getUser(sender);
+    if (!user || user.rol !== 'admin') {
+      await message.reply("❌ No tienes permisos para ejecutar este comando.");
+      return true;
+    }
+
+    try {
+      const db = incidenceDB.getDB();
+      await new Promise((resolve, reject) => {
+        db.run("DELETE FROM incidencias WHERE id = ?", [incidenciaId], function (err) {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+
+      await message.reply(`🗑️ *La incidencia con ID ${incidenciaId} ha sido eliminada correctamente.*`);
+      console.log(`⚠️ Incidencia ID ${incidenciaId} eliminada por ${sender}`);
+    } catch (err) {
+      console.error("❌ Error ejecutando /deleteid:", err);
+      await message.reply("❌ Error al eliminar la incidencia de la base de datos.");
+    }
+
+    return true;
+  }
+
 
   // Comando: /tareas <categoria> (alias: /incidencias <categoria>)
   if (normalizedBody.startsWith('/tareas')) {
