@@ -29,15 +29,24 @@ async function processNewIncidence(client, message) {
   let directRecipients = [];
 
   const mentionedIds = message.mentionedIds && message.mentionedIds.length
-    ? await Promise.all(message.mentionedIds.map(async id => {
-        if (id.endsWith('@lid')) {
+  ? await Promise.all(message.mentionedIds.map(async id => {
+      // ✅ Solo intentar getContactById si es un JID válido
+      if (id.endsWith('@lid')) {
+        try {
           const contact = await client.getContactById(id);
-          return contact.id._serialized;
+          return contact?.id?._serialized || id.replace('@lid', '@c.us');
+        } catch {
+          return id.replace('@lid', '@c.us');
         }
+      }
+      if (id.endsWith('@c.us')) {
         return id;
-      }))
-    : [...rawText.matchAll(/@([0-9]{11,15}@(c\.us|lid))/g)]
-        .map(m => m[1].replace('@lid', '@c.us'));
+      }
+      // ✅ ID interno sin formato JID → lo dejamos igual
+      return id;
+    }))
+  : [...rawText.matchAll(/@([0-9]{11,15}@(c\.us|lid))/g)]
+      .map(m => m[1].replace('@lid', '@c.us'));
 
   console.log('🔍 Menciones detectadas:', mentionedIds);
 
