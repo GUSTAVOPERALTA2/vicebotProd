@@ -7,6 +7,8 @@ const { v4: uuidv4 } = require('uuid');
 const { normalizeText, similarity, adaptiveSimilarityCheck } = require('../../config/stringUtils');
 const { getUser, loadUsers } = require('../../config/userManager');
 const { safeReplyOrSend } = require('../../utils/messageUtils');
+const { resolveRealJid } = require('../../utils/jidUtils');
+
 
 function formatTeamsList(list) {
   if (list.length === 1) return list[0];
@@ -27,8 +29,24 @@ async function processNewIncidence(client, message) {
   let directRecipients = [];
 
   const mentionedIds = message.mentionedIds && message.mentionedIds.length
-    ? message.mentionedIds
-    : [...rawText.matchAll(/@([0-9]{11,15}@c\.us)/g)].map(m => m[1]);
+  ? await Promise.all(message.mentionedIds.map(async id => {
+      // ✅ Solo intentar getContactById si es un JID válido
+      if (id.endsWith('@lid')) {
+        try {
+          const contact = await client.getContactById(id);
+          return contact?.id?._serialized || id.replace('@lid', '@c.us');
+        } catch {
+          return id.replace('@lid', '@c.us');
+        }
+      }
+      if (id.endsWith('@c.us')) {
+        return id;
+      }
+      // ✅ ID interno sin formato JID → lo dejamos igual
+      return id;
+    }))
+  : [...rawText.matchAll(/@([0-9]{11,15}@(c\.us|lid))/g)]
+      .map(m => m[1].replace('@lid', '@c.us'));
 
   console.log('🔍 Menciones detectadas:', mentionedIds);
 
@@ -113,7 +131,7 @@ async function processNewIncidence(client, message) {
     uniqueMessageId,
     originalMsgId,
     descripcion: message.body,
-    reportadoPor: message.author || message.from,
+    reportadoPor: await resolveRealJid(message),
     fechaCreacion: new Date().toISOString(),
     estado: 'pendiente',
     categoria: foundCategories.join(', '),

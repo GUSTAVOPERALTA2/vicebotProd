@@ -6,6 +6,8 @@ const { normalizeText } = require('../../config/stringUtils');
 const { extractIdentifier } = require('./identifierExtractor');
 const { getUser } = require('../../config/userManager');
 const { safeReplyOrSend } = require('../../utils/messageUtils');
+const { resolveRealJid } = require('../../utils/jidUtils');
+
 
 /**
  * saveFeedbackRecord - Persiste un array completo de registros de feedback
@@ -121,8 +123,9 @@ async function handleTeamResponse(client, message) {
     history = [];
   }
 
+  const senderJid = await resolveRealJid(message);
   const nuevoRegistro = {
-    usuario:    message.author || message.from,
+    usuario:    senderJid,
     equipo,
     comentario: message.body,
     fecha:      now,
@@ -140,9 +143,10 @@ async function handleTeamResponse(client, message) {
   try {
     const originChat = await client.getChatById(inc.grupoOrigen);
     const teamName   = equipo.toUpperCase();
-    const userRec    = getUser(message.author || message.from);
-    const whoName    = userRec ? `${userRec.nombre} (${userRec.cargo})` : (message.author || message.from);
 
+    const senderJid  = await resolveRealJid(message);
+    const userRec    = getUser(senderJid);
+    const whoName    = userRec ? `${userRec.nombre} (${userRec.cargo})` : senderJid;
     const detailBlock =
       `💬 *Feedback recibido (ID ${incidenciaId}):*\n\n` +
       `✍️ *Tarea*: \n${inc.descripcion}\n\n` +
@@ -195,8 +199,9 @@ async function handleOriginResponse(client, message) {
   try {
     history = JSON.parse(inc.feedbackHistory || '[]');
   } catch {}
+  const senderJid = await resolveRealJid(message);
   history.push({
-    usuario:    message.author || message.from,
+    usuario:    senderJid,
     equipo:     'origin',
     comentario: message.body,
     fecha:      now,

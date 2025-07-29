@@ -9,6 +9,9 @@ const { normalizeText }                 = require('../../config/stringUtils');
 const { formatDate }                    = require('../../config/dateUtils');
 const { extractIdentifier }             = require('./identifierExtractor');
 const { safeReplyOrSend }               = require('../../utils/messageUtils');
+const { resolveRealJid } = require('../../utils/jidUtils');
+
+
 
 /**
  * processConfirmation - Procesa un mensaje de confirmación recibido en los grupos destino
@@ -87,8 +90,9 @@ async function processConfirmation(client, message) {
     } catch {
       historyArray = [];
     }
+    const senderJid = await resolveRealJid(message);
     historyArray.push({
-      usuario:    message.author || message.from,
+      usuario:    senderJid,
       comentario: message.body,
       fecha:      nowTs,
       equipo:     categoriaEquipo,
@@ -110,7 +114,7 @@ async function processConfirmation(client, message) {
     const EMOJIS = { it: '💻IT', man: '🔧MANT', ama: '🔑HSKP', rs: '🍷 RS', seg: '🦺 SEG' };
 
     if (requiredTeams.length === 1) {
-      const completedJid   = message.author || message.from;
+      const completedJid   = await resolveRealJid(message);
       const userRec        = getUser(completedJid);
       const completedName  = userRec ? userRec.nombre : completedJid;
       const completionTime = moment().tz('America/Mazatlan').toISOString();
@@ -206,11 +210,12 @@ async function processConfirmation(client, message) {
       incidencia.completadoPorNombre = confirmersList;
       incidencia.fechaFinalizacion   = completionTime;
       incidencia.faseActual          = faseString;
-
+      
+      const senderJid = await resolveRealJid(message);
       await new Promise(res =>
         completeIncidencia(
           incidenciaId,
-          message.author || message.from,
+          senderJid,
           confirmersList,
           completionTime,
           res
