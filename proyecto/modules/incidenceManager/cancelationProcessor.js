@@ -5,6 +5,9 @@ const { getUser } = require('../../config/userManager');
 const { normalizeText, adaptiveSimilarityCheck } = require('../../config/stringUtils');
 const config = require('../../config/config');
 const { safeReplyOrSend } = require('../../utils/messageUtils');
+const { resolveRealJid } = require('../../utils/jidUtils');
+
+
 
 async function processCancelationNewMethod(client, message) {
   const chat = await message.getChat();
@@ -48,7 +51,7 @@ async function processCancelationNewMethod(client, message) {
     return true;
   }
 
-  const sender = message.author || message.from;
+  const sender = await resolveRealJid(message);
   const user = getUser(sender);
   if (incidencia.reportadoPor !== sender && (!user || user.rol !== 'admin')) {
     await safeReplyOrSend(chat, message, '❌ No tienes permisos para cancelar esta incidencia.');
