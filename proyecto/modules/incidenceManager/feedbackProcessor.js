@@ -144,22 +144,35 @@ async function handleTeamResponse(client, message) {
     const originChat = await client.getChatById(inc.grupoOrigen);
     const teamName   = equipo.toUpperCase();
 
-    const senderJid  = await resolveRealJid(message);
-    const userRec    = getUser(senderJid);
-    const whoName    = userRec ? `${userRec.nombre} (${userRec.cargo})` : senderJid;
+    // Obtenemos el JID y nombre del EMISOR original
+    const reporterJid = inc.reportadoPor;
+    const reporterRec = getUser(reporterJid);
+    const emitterName = reporterRec
+      ? `${reporterRec.nombre} (${reporterRec.cargo})`
+      : reporterJid;
+
+    // Obtenemos el JID y nombre de quien responde del equipo
+    const senderJid     = await resolveRealJid(message);
+    const responderRec  = getUser(senderJid);
+    const responderName = responderRec
+      ? `${responderRec.nombre} (${responderRec.cargo})`
+      : senderJid;
+
     const detailBlock =
       `💬 *Feedback recibido (ID ${incidenciaId}):*\n\n` +
       `✍️ *Tarea*: \n${inc.descripcion}\n\n` +
-      `🗣️ *${teamName} responde:* \n${message.body}`;
+      `🗣️ *${teamName} ${responderName} responde:* \n${message.body}`;
 
+    // Confirmación en el grupo destino (equipo)
     try {
       await chat.sendMessage(
-        `✅ *Respuesta enviada al emisor ${whoName} para la tarea ${incidenciaId}*`
+        `✅ *Respuesta enviada al emisor ${emitterName} para la tarea ${incidenciaId}*`
       );
     } catch (e) {
       console.error(`❌ Error al enviar confirmación de respuesta en grupo destino:`, e);
     }
 
+    // Reenvío del detalle al originador (si no es un grupo)
     if (!inc.grupoOrigen.endsWith('@g.us')) {
       try {
         const userChat = await client.getChatById(inc.reportadoPor);
@@ -170,7 +183,7 @@ async function handleTeamResponse(client, message) {
       }
     }
 
-    console.log(`✅ Notificación enviada al grupo origen ${inc.grupoOrigen} por ${whoName}`);
+    console.log(`✅ Notificación enviada al grupo origen ${inc.grupoOrigen} por ${emitterName}`);
   } catch (err) {
     console.error('❌ Error al notificar feedback en grupo origen:', err);
   }

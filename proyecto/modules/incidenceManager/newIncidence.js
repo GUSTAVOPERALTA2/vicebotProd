@@ -149,8 +149,18 @@ async function processNewIncidence(client, message) {
 
     async function forwardMessage(targetId, label) {
       try {
+        // 1) Resolvemos quién envía la tarea
+        const senderJid = await resolveRealJid(message);
+        const userRec   = getUser(senderJid);
+        const emitterName = userRec
+        ? `${userRec.nombre} (${userRec.cargo})`
+        : senderJid;
+
         const targetChat = await client.getChatById(targetId);
-        const caption = `*Nueva tarea recibida (ID: ${lastID}):*\n\n✅ *${message.body}*`;
+        const caption = 
+          `*Nueva tarea recibida (ID: ${lastID}):*\n\n` +
+          `👤 *Emisor:* ${emitterName}\n\n` +
+          `✅ *${message.body}*`;
         if (mediaData) {
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });
