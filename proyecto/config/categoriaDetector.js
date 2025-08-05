@@ -17,8 +17,8 @@ function detectarCategoriaPorFiltros(text, mentions, keywordsData) {
     it: ['it', 'sistemas'],
     man: ['mantenimiento', 'manto', 'mant'],
     ama: ['hskp', 'ama de llaves'],
-    room: ['roomservice', 'room service'],
-    seg: ['seguridad']
+    room: ['roomservice', 'room service', 'Room Service', 'Room service'],
+    seg: ['seguridad', 'seg']
   };
   const normText = normalizeText(text);
 

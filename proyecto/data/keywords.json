@@ -219,6 +219,18 @@
         "progreso",
         "actualización"
       ]
+    },
+    "pausar": {
+      "frases": [
+        "pausar",
+        "en pausa",
+        "pausa" 
+      ],
+      "palabras": [
+        "pausar",
+        "en pausa",
+        "pausa"
+      ]
     }
   },
   "cancelacion": {
@@ -240,6 +252,7 @@
       "opciones",
       "instrucciones"
     ],
+    
     "frases": [
       "qué comandos hay",
       "cómo uso el bot",
@@ -247,6 +260,40 @@
     ]
   },
   "intenciones": {
+    "tareasEnProceso": {
+      "palabras": [
+        "proceso",
+        "curso",
+        "ejecución",
+        "marcha",
+        "desarrollo",
+        "trámite",
+        "espera"
+      ],
+      "frases": [
+        "en proceso",
+        "en curso",
+        "en ejecución",
+        "en marcha",
+        "en desarrollo",
+        "en trámite",
+        "en espera"
+      ]
+    },
+    "tareasEnPausa": {
+      "palabras": [
+        "pausada",
+        "pausadas",
+        "en pausa",
+        "en pausa",
+        "en espera"
+      ],
+      "frases": [
+        "en pausa",
+        "pausadas",
+        "en espera"
+      ]
+    },
     "ayudaReporte": {
       "palabras": [
         "reporte",

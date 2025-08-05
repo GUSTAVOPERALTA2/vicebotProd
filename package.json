@@ -1,8 +1,11 @@
 {
   "dependencies": {
+    "chartjs-node-canvas": "^5.0.0",
     "exceljs": "^4.4.0",
     "moment-timezone": "^0.5.48",
+    "qrcode-terminal": "^0.12.0",
     "sqlite3": "^5.1.7",
-    "whatsapp-web.js": "^1.27.0"
+    "whatsapp-web.js": "^1.31.0"
   }
 }
+

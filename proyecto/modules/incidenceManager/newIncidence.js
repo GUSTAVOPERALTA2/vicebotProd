@@ -103,11 +103,22 @@ async function processNewIncidence(client, message) {
   }
 
   if (!foundCategories.length) {
-    await safeReplyOrSend(chat, message, "🤖 No pude identificar el área correspondiente. Por favor revisa tu mensaje o menciona al área (ej. @IT, @Mantenimiento).");
-    console.warn("⚠️ No se detectó categoría. Mensaje ignorado.");
-    return;
-  }
-
+    await safeReplyOrSend(chat, message,
+    "🤖 ¿Estás intentando enviar una nueva incidencia?\n\n" +
+    "📝 *Da una descripción detallada de tu reporte.*\n" +
+    "➕ *Añade tantos detalles como puedas.*\n" +
+    "📷 *Puedes agregar UNA FOTO O VIDEO si lo deseas.*\n\n" +
+    "🏷️ *Al final, escribe el área correspondiente:*\n" +
+    "• MANTENIMIENTO\n" +
+    "• SISTEMAS\n" +
+    "• ROOM SERVICE\n" +
+    "• HSKP\n" +
+    "• SEGURIDAD" +
+    "\n\n*ADJUNTA TODO EN UN MISMO MENSAJE* \n\n"
+  );
+  console.warn("⚠️ No se detectó categoría. Mensaje ignorado.");
+  return;
+}
   let confirmaciones = null;
   if (foundCategories.length > 1) {
     confirmaciones = {};
@@ -150,7 +161,14 @@ async function processNewIncidence(client, message) {
     async function forwardMessage(targetId, label) {
       try {
         const targetChat = await client.getChatById(targetId);
+<<<<<<< Updated upstream
         const caption = `*Nueva tarea recibida (ID: ${lastID}):*\n\n✅ *${message.body}*`;
+=======
+        const caption = 
+          `*Nueva tarea recibida (ID: ${lastID}):*\n\n` +
+          `*${message.body}* \n\n` +
+          `*Reportada por:* ${emitterName}\n`;
+>>>>>>> Stashed changes
         if (mediaData) {
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });

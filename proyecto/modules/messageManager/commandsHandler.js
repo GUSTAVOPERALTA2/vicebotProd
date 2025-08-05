@@ -27,8 +27,12 @@ async function handleCommands(client, message) {
   // Comando: /ayuda
   if (normalizedBody.startsWith('/ayuda') && !normalizedBody.startsWith('/helpadmin')) {
     const helpMessage =
-  `¡Hola! 👋 Soy tu asistente de incidencias. Esto es lo que puedo hacer por ti:
+  `¡Hola! 👋 Soy tu asistente de incidencias. 
+  Puedes consultar el manual de usuario aquí:
 
+  https://docs.google.com/document/d/1ZItMERp3lkOahUz22dyQuaAFaszwj9MaN0FylMYlVz8/edit?usp=sharing
+  
+  Esto es lo que puedo hacer por ti:
   • *Ver tareas por categoría*  
     – Ejemplo: “Muéstrame las tareas de IT”  
     – Equivalente a: /tareas it
@@ -501,7 +505,7 @@ if (normalizedBody.startsWith('/generarreporte')) {
     let estado = null;
     let categoria = null;
 
-    const estadosValidos = ['pendiente', 'completada', 'cancelada'];
+    const estadosValidos = ['pendiente', 'completada', 'cancelada', 'en proceso', 'en pausa'];
     const categoriasValidas = ['it', 'man', 'ama', 'rs', 'seg'];
 
     const todayRaw = new Date();
@@ -537,6 +541,8 @@ if (normalizedBody.startsWith('/generarreporte')) {
     const resumen = incidencias.map(inc => {
       return `🔷 ID: *${inc.id}* | 📅 ${inc.fechaCreacion.slice(0,10)} | 📁 ${inc.categoria} | ` +
             (inc.estado === 'pendiente'   ? '🟡 pendiente' :
+              inc.estado === 'en espera'   ? '🟡 en espera' :
+              inc.estado === 'en pausa'   ? '🟡 en pausa' :
               inc.estado === 'completada'  ? '🛠 completada' :
               inc.estado === 'cancelada'   ? '❌ cancelada' : inc.estado) +
             `\n✏️ ${inc.descripcion}`;

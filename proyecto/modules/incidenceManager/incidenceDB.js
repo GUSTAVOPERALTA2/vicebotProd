@@ -26,7 +26,8 @@ function initDB() {
                 fechaFinalizacion   TEXT,
                 completadoPorJid    TEXT,
                 completadoPorNombre TEXT,
-                faseActual          TEXT
+                faseActual          TEXT,
+                ultimoRecordatorio TEXT
               )`);
     }
   });
@@ -34,6 +35,41 @@ function initDB() {
 
 function getDB() {
   return db;
+}
+
+/**
+ * pauseIncidencia - Actualiza el estado de la incidencia a "en pausa".
+ * 
+ * @param {number|string} incidenciaId - ID de la incidencia
+ * @param {function} callback - Callback de finalización
+ */
+function pauseIncidencia(incidenciaId, callback) {
+  const sql = "UPDATE incidencias SET estado = 'en pausa' WHERE id = ?";
+  db.run(sql, [incidenciaId], function(err) {
+    if (err) {
+      callback(err);
+    } else if (this.changes === 0) {
+      callback(new Error("No se actualizó ninguna incidencia; verifica que el ID exista."));
+    } else {
+      callback(null);
+    }
+  });
+}
+
+/**
+ * pauseIncidenciaAsync - Versión asíncrona de pauseIncidencia
+ */
+function pauseIncidenciaAsync(incidenciaId) {
+  return new Promise((resolve, reject) => {
+    const sql = "UPDATE incidencias SET estado = 'en pausa' WHERE id = ?";
+    db.run(sql, [incidenciaId], function(err) {
+      if (err) return reject(err);
+      if (this.changes === 0) {
+        return reject(new Error("No se actualizó ninguna incidencia; verifica que el ID exista."));
+      }
+      resolve();
+    });
+  });
 }
 
 function insertarIncidencia(incidencia, callback) {
@@ -217,13 +253,16 @@ function updateFeedbackHistory(incidenciaId, newFeedback, callback) {
 }
 
 function cancelarIncidencia(incidenciaId, callback) {
-  const sql = "UPDATE incidencias SET estado = ?, fechaCancelacion = ? WHERE id = ? AND estado = ?";
+  const sql = `
+    UPDATE incidencias 
+    SET estado = ?, fechaCancelacion = ? 
+    WHERE id = ? AND estado IN ('pendiente', 'en proceso')`;
   const fechaCancelacion = new Date().toISOString();
-  db.run(sql, ["cancelada", fechaCancelacion, incidenciaId, "pendiente"], function(err) {
+  db.run(sql, ["cancelada", fechaCancelacion, incidenciaId], function(err) {
     if (err) {
       callback(err);
     } else if (this.changes === 0) {
-      callback(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y esté en estado pendiente."));
+      callback(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y esté en estado pendiente o en proceso."));
     } else {
       callback(null);
     }
@@ -236,19 +275,18 @@ function cancelarIncidenciaAsync(incidenciaId) {
       UPDATE incidencias
       SET estado = 'cancelada',
           fechaCancelacion = ?
-      WHERE id = ? AND estado = 'pendiente'`;
+      WHERE id = ? AND estado IN ('pendiente', 'en proceso')`;
 
     const fechaCancelacion = new Date().toISOString();
     db.run(sql, [fechaCancelacion, incidenciaId], function(err) {
       if (err) return reject(err);
       if (this.changes === 0) {
-        return reject(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y esté en estado pendiente."));
+        return reject(new Error("No se actualizó ninguna incidencia; verifica que el ID exista y esté en estado pendiente o en proceso."));
       }
       resolve();
     });
   });
 }
-
 function updateDescripcion(id, descripcion, callback) {
   const sql = "UPDATE incidencias SET descripcion = ? WHERE id = ?";
   db.run(sql, [descripcion, id], err => callback(err));
@@ -291,8 +329,29 @@ function updateFaseAsync(incidenciaId, fase) {
   });
 }
 
+function markInProcessAsync(incidenciaId) {
+  return new Promise((resolve, reject) => {
+    const sql = "UPDATE incidencias SET estado = 'en proceso' WHERE id = ? AND estado != 'completada' AND estado != 'cancelada'";
+    db.run(sql, [incidenciaId], function (err) {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
+function markInProcess(incidenciaId, callback) {
+  const sql = "UPDATE incidencias SET estado = 'en proceso' WHERE id = ? AND estado != 'completada' AND estado != 'cancelada'";
+  db.run(sql, [incidenciaId], function (err) {
+    if (err) {
+      callback(err);
+    } else {
+      callback(null);
+    }
+  });
+}
 module.exports = {
   initDB,
+  markInProcess,
+  markInProcessAsync,
   getDB,
   insertarIncidencia,
   insertarIncidenciaAsync,
@@ -310,5 +369,7 @@ module.exports = {
   completeIncidencia,
   updateFase,
   updateFaseAsync,
-  filtrarIncidencias
+  filtrarIncidencias,
+  pauseIncidencia,        // ✅ Nuevo
+  pauseIncidenciaAsync    // ✅ Nuevo
 };

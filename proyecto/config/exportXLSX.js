@@ -225,6 +225,18 @@ async function exportXLSX(startDate, endDate, categories, statuses) {
         pattern: 'solid',
         fgColor: { argb: 'FFFF0000' }
       };
+    } else if (val === 'en proceso') {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF87CEEB' }
+      };
+    } else if (val === 'en pausa') {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFF69B4' } // Rosa
+      };
     } else if (val === 'pendiente') {
       cell.fill = {
         type: 'pattern',
@@ -305,8 +317,8 @@ module.exports = { exportXLSX };
 /** Permite usar desde línea de comandos con filtros opcionales */
 if (require.main === module) {
   const [,, start, end, ...rest] = process.argv;
-  const validCats = ['it', 'man', 'ama'];
-  const validStats = ['pendiente', 'completada', 'cancelada'];
+  const validCats = ['it', 'man', 'ama','rs', 'seg'];
+  const validStats = ['pendiente', 'completada', 'cancelada','en proceso'];
   const categories = [];
   const statuses = [];
 

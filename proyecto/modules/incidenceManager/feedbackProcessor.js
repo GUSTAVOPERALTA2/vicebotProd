@@ -7,8 +7,34 @@ const { extractIdentifier } = require('./identifierExtractor');
 const { getUser } = require('../../config/userManager');
 const { safeReplyOrSend } = require('../../utils/messageUtils');
 const { resolveRealJid } = require('../../utils/jidUtils');
+const { markInProcessAsync } = require('./incidenceDB');
 
 
+/**
+ * buildFeedbackHistoryList - Construye texto con historial de comentarios
+ * @param {string} feedbackHistory - JSON string o array de historial
+ * @returns {string} Texto formateado con comentarios anteriores
+ */
+function buildFeedbackHistoryList(feedbackHistory) {
+  let historyList = '';
+  try {
+    const parsedHistory = typeof feedbackHistory === 'string'
+      ? JSON.parse(feedbackHistory)
+      : feedbackHistory || [];
+    
+    historyList = parsedHistory
+      .filter(r => r.tipo === 'feedbackrespuesta')
+      .map(r => {
+        const u = getUser(r.usuario);
+        const userLabel = u ? `${u.nombre} (${u.cargo})` : r.usuario;
+        return `• *${userLabel}*: ${r.comentario}`;
+      })
+      .join('\n');
+  } catch (e) {
+    console.error('❌ Error al construir historial de feedback:', e);
+  }
+  return historyList ? `Comentarios anteriores:\n${historyList}` : '';
+}
 /**
  * saveFeedbackRecord - Persiste un array completo de registros de feedback
  * @param {string|number} incidenceId
@@ -20,11 +46,14 @@ async function saveFeedbackRecord(incidenceId, history) {
   );
 }
 
+
+
 /**
- * requestFeedback - Detecta y procesa una solicitud de feedback en un mensaje
- *
- * @param {import('whatsapp-web.js').Client} client
- * @param {import('whatsapp-web.js').Message} message
+ * @deprecated
+ * requestFeedback - Esta función está obsoleta desde que implementamos
+ * la retroalimentación bidireccional (emisor ↔ equipo).
+ * 
+ * Se mantiene temporalmente por compatibilidad, pero no debe usarse.
  */
 async function requestFeedback(client, message) {
   const originChat = await message.getChat();
@@ -109,9 +138,21 @@ async function handleTeamResponse(client, message) {
   if (chatId === config.groupBotDestinoId)         equipo = 'it';
   else if (chatId === config.groupMantenimientoId) equipo = 'man';
   else if (chatId === config.groupAmaId)           equipo = 'ama';
-  else if (chatId === config.groupRoomServiceId)  equipo = 'rs';
+  else if (chatId === config.groupRoomServiceId)   equipo = 'rs';
   else if (chatId === config.groupSeguridadId)     equipo = 'seg';
   else return;
+
+  // 🟠 Nuevo: Si la incidencia está pendiente, actualizar a "en proceso"
+  if (inc.estado === 'pendiente' && inc.estado !== 'cancelada') {
+    try {
+      await new Promise(res => 
+        incidenceDB.updateIncidenciaStatus(incidenciaId, 'en proceso', res)
+      );
+      console.log(`Incidencia ${incidenciaId} "en proceso" por equipo ${equipo}`);
+    } catch (err) {
+      console.error('❌ Error al actualizar estado a "en proceso":', err);
+    }
+  }
 
   const now = new Date().toISOString();
   let history = [];
@@ -120,16 +161,17 @@ async function handleTeamResponse(client, message) {
       ? JSON.parse(inc.feedbackHistory)
       : inc.feedbackHistory || [];
   } catch {
+    console.warn(`⚠️ Historial corrupto para incidencia ${incidenciaId}, inicializando vacío`);
     history = [];
   }
 
   const senderJid = await resolveRealJid(message);
   const nuevoRegistro = {
-    usuario:    senderJid,
+    usuario: senderJid,
     equipo,
-    comentario: message.body,
-    fecha:      now,
-    tipo:       'feedbackrespuesta'
+    comentario: message.body || '[Archivo adjunto]',
+    fecha: now,
+    tipo: 'feedbackrespuesta'
   };
   history.push(nuevoRegistro);
 
@@ -144,6 +186,7 @@ async function handleTeamResponse(client, message) {
     const originChat = await client.getChatById(inc.grupoOrigen);
     const teamName   = equipo.toUpperCase();
 
+<<<<<<< Updated upstream
     const senderJid  = await resolveRealJid(message);
     const userRec    = getUser(senderJid);
     const whoName    = userRec ? `${userRec.nombre} (${userRec.cargo})` : senderJid;
@@ -151,10 +194,29 @@ async function handleTeamResponse(client, message) {
       `💬 *Feedback recibido (ID ${incidenciaId}):*\n\n` +
       `✍️ *Tarea*: \n${inc.descripcion}\n\n` +
       `🗣️ *${teamName} responde:* \n${message.body}`;
+=======
+    // Obtenemos el JID y nombre del EMISOR original
+    const reporterJid = inc.reportadoPor;
+    const reporterRec = getUser(reporterJid);
+    const emitterName = reporterRec
+      ? `${reporterRec.nombre} (${reporterRec.cargo})`
+      : reporterJid;
+
+    const historyList = buildFeedbackHistoryList(history);
+    const textoFeedback =
+      `${message.body || '[Archivo adjunto]'}\n\n` +
+      `Tarea ID:${incidenciaId}\n\n` +
+      `📓 ${inc.descripcion} \n\n` +
+      historyList;
+>>>>>>> Stashed changes
 
     try {
       await chat.sendMessage(
+<<<<<<< Updated upstream
         `✅ *Respuesta enviada al emisor ${whoName} para la tarea ${incidenciaId}*`
+=======
+        `✅ *Respuesta enviada al emisor ${emitterName} para la tarea ID:${incidenciaId}*`
+>>>>>>> Stashed changes
       );
     } catch (e) {
       console.error(`❌ Error al enviar confirmación de respuesta en grupo destino:`, e);
@@ -163,7 +225,14 @@ async function handleTeamResponse(client, message) {
     if (!inc.grupoOrigen.endsWith('@g.us')) {
       try {
         const userChat = await client.getChatById(inc.reportadoPor);
-        await userChat.sendMessage(detailBlock);
+
+        if (message.hasMedia) {
+          const media = await message.downloadMedia();
+          await userChat.sendMessage(media, { caption: textoFeedback });
+        } else {
+          await userChat.sendMessage(textoFeedback);
+        }
+
         console.log(`📤 Feedback también enviado directamente a ${inc.reportadoPor}`);
       } catch (e) {
         console.error(`❌ No se pudo enviar el feedback al usuario ${inc.reportadoPor}:`, e);
@@ -194,21 +263,63 @@ async function handleOriginResponse(client, message) {
   );
   if (!inc) return;
 
+  // 🟠 Nuevo: Si la incidencia está pendiente, actualizar a "en proceso"
+  if (inc.estado === 'pendiente') {
+    try {
+      await new Promise(res => 
+        incidenceDB.updateIncidenciaStatus(incidenciaId, 'en proceso', res)
+      );
+      console.log(`🔄 Incidencia ${incidenciaId} "en proceso" por originador`);
+    } catch (err) {
+      console.error('❌ Error al actualizar estado a "en proceso":', err);
+    }
+  }
+
   const now = new Date().toISOString();
   let history = [];
   try {
     history = JSON.parse(inc.feedbackHistory || '[]');
-  } catch {}
+  } catch {
+    console.warn(`⚠️ Historial corrupto para incidencia ${incidenciaId}, inicializando vacío`);
+    history = [];
+  }
   const senderJid = await resolveRealJid(message);
+  
   history.push({
     usuario:    senderJid,
     equipo:     'origin',
-    comentario: message.body,
+    comentario: message.body || '[Archivo adjunto]',
     fecha:      now,
     tipo:       'feedbackrespuesta'
   });
 
   await saveFeedbackRecord(incidenciaId, history);
+
+  const teams = inc.categoria.split(',').map(c => c.trim().toLowerCase());
+  const historyList = buildFeedbackHistoryList(history);
+
+  for (const team of teams) {
+    const groupId = config.destinoGrupos[team];
+    if (!groupId) continue;
+
+    try {
+      const destChat = await client.getChatById(groupId);
+      const textoFeedback =
+        `${message.body || '[Archivo adjunto]'}\n\n` +
+        `Tarea ID:${incidenciaId}\n` +
+        `📓 ${inc.descripcion} \n\n` +
+        historyList;
+
+      if (message.hasMedia) {
+        const media = await message.downloadMedia();
+        await destChat.sendMessage(media, { caption: textoFeedback });
+      } else {
+        await destChat.sendMessage(textoFeedback);
+      }
+    } catch (e) {
+      console.error(`❌ Error al reenviar comentario al grupo ${team}:`, e);
+    }
+  }
 
   const originChat = await message.getChat();
   try {
