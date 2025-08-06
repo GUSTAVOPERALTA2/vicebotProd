@@ -141,7 +141,9 @@ async function processNewIncidence(client, message) {
           fs.mkdirSync(mediaDir, { recursive: true });
           const filepath = path.join(mediaDir, filename);
           fs.writeFileSync(filepath, media.data, 'base64');
-          mediaPath = filepath; // Guardamos la ruta absoluta en la BD
+          mediaPath = filename;  // 🔹 Guardamos sólo el nombre de archivo
+          
+          
         } else {
           // Fotos se guardan directo en la BD
           mediaData = { data: media.data, mimetype: media.mimetype };
