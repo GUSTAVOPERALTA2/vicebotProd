@@ -246,3 +246,5 @@ async function processNewIncidence(client, message) {
 }
 
 module.exports = { processNewIncidence };
+
+//cambios
