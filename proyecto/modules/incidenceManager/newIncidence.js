@@ -137,7 +137,11 @@ async function processNewIncidence(client, message) {
           // Guardamos videos en carpeta de data
           const ext = media.mimetype.split('/')[1];
           const filename = `incidencia_${Date.now()}.${ext}`;
-          const filepath = path.join(__dirname, '../../data/media', filename);
+          const mediaDir = path.join(__dirname, '../../data/media');
+          if (!fs.existsSync(mediaDir)) {
+            fs.mkdirSync(mediaDir, { recursive: true });
+          }
+          const filepath = path.join(mediaDir, filename);
 
           fs.writeFileSync(filepath, media.data, 'base64');
           mediaPath = filepath; // 🔹 Guardamos solo ruta para videos
