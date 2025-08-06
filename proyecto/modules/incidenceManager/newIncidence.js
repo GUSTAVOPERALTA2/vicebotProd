@@ -134,17 +134,14 @@ async function processNewIncidence(client, message) {
 
       if (media && media.data && media.mimetype) {
         if (media.mimetype.startsWith('video/')) {
-          // Guardamos videos en carpeta de data
           const ext = media.mimetype.split('/')[1];
           const filename = `incidencia_${Date.now()}.${ext}`;
           const mediaDir = path.join(__dirname, '../../data/media');
-          if (!fs.existsSync(mediaDir)) {
-            fs.mkdirSync(mediaDir, { recursive: true });
-          }
+          // Crear carpeta si no existe
+          fs.mkdirSync(mediaDir, { recursive: true });
           const filepath = path.join(mediaDir, filename);
-
           fs.writeFileSync(filepath, media.data, 'base64');
-          mediaPath = filepath; // 🔹 Guardamos solo ruta para videos
+          mediaPath = filepath; // Guardamos la ruta absoluta en la BD
         } else {
           // Fotos se guardan directo en la BD
           mediaData = { data: media.data, mimetype: media.mimetype };

@@ -1,3 +1,4 @@
+const fs = require('fs');
 const moment = require('moment-timezone');
 const config = require('./config');
 const incidenceDB = require('../modules/incidenceManager/incidenceDB');
@@ -52,7 +53,6 @@ function checkPendingIncidences(client, initialRun = false) {
         }
       }
 
-      // 📌 Calcular próximo recordatorio si está en pausa
       let proximoRecordatorioTxt = '';
       if (row.estado === 'en pausa') {
         const lastReminder = row.ultimoRecordatorio ? moment(row.ultimoRecordatorio) : null;
@@ -62,7 +62,6 @@ function checkPendingIncidences(client, initialRun = false) {
 
         proximoRecordatorioTxt = `\n\n⏸️ *Próximo recordatorio:* ${nextReminder.format('DD/MM/YYYY HH:mm')}`;
 
-        // Actualizamos timestamp de último recordatorio solo si no se envió antes
         if (!lastReminder || now.diff(lastReminder, 'hours') >= 24) {
           const sqlUpdate = `UPDATE incidencias SET ultimoRecordatorio = ? WHERE id = ?`;
           db.run(sqlUpdate, [now.toISOString(), row.id], err => {
@@ -70,11 +69,10 @@ function checkPendingIncidences(client, initialRun = false) {
           });
         } else {
           console.log(`⏸️ Incidencia ${row.id} pausada, recordatorio enviado hace menos de 24h.`);
-          return; // No enviamos aún
+          return;
         }
       }
 
-      // Últimos 5 comentarios
       let comentariosTxt = '';
       if (row.feedbackHistory) {
         try {
@@ -124,16 +122,18 @@ function checkPendingIncidences(client, initialRun = false) {
           .then(async chat => {
             try {
               let media = null;
-              
-              if (row.mediaPath) {
-                // 🎥 Video
+
+              // 🎥 Video
+              if (row.mediaPath && fs.existsSync(row.mediaPath)) {
                 try {
                   media = MessageMedia.fromFilePath(row.mediaPath);
+                  console.log(`📂 Enviando video desde ruta: ${row.mediaPath}`);
                 } catch (e) {
                   console.error("❌ Error cargando video desde ruta:", e);
                 }
-              } else if (row.media) {
-                // 🖼️ Imagen
+              } 
+              // 🖼️ Imagen
+              else if (row.media) {
                 try {
                   const parsed = JSON.parse(row.media);
                   if (parsed?.data && parsed?.mimetype) {
