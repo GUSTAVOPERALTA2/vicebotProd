@@ -295,8 +295,9 @@ function buildFinalMessage(inc, required) {
 
   return (
     `${inc.descripcion}\n\n` +
-    `*ha sido COMPLETADA*\n\n` +
+    `*COMPLETADA*\n\n` +
     `*👤 Colega(s):* ${inc.completadoPorNombre}\n\n` +
+    `*🤖✅ FASE ${inc.faseActual} ✅🤖*\n\n\n` +
     `*📅Creación:* ${createdAt}\n` +
     `*📅Conclusión:* ${concludedAt}\n\n` +
     `*⏱️ Tiempo total:* ${totalStr
@@ -304,9 +305,7 @@ function buildFinalMessage(inc, required) {
       .replace(/ hora\(s\), /, 'h ')
       .replace(/ minuto\(s\)/, 'm')}\n` +
     `${cronos}\n\n` +
-    `*🤖✅ FASE ${inc.faseActual} ✅🤖*\n\n` +
-    `*ID:* ${inc.id}\n\n` +
-    `*MUCHAS GRACIAS POR SU PACIENCIA* 😊`
+    `*ID:* ${inc.id}\n\n`
   );
 }
 

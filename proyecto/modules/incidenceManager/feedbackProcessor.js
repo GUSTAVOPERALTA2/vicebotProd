@@ -33,7 +33,7 @@ function buildFeedbackHistoryList(feedbackHistory) {
   } catch (e) {
     console.error('❌ Error al construir historial de feedback:', e);
   }
-  return historyList ? `Comentarios anteriores:\n${historyList}` : '';
+  return historyList ? `*Comentarios anteriores:*\n\n${historyList}` : '';
 }
 /**
  * saveFeedbackRecord - Persiste un array completo de registros de feedback
@@ -186,15 +186,6 @@ async function handleTeamResponse(client, message) {
     const originChat = await client.getChatById(inc.grupoOrigen);
     const teamName   = equipo.toUpperCase();
 
-<<<<<<< Updated upstream
-    const senderJid  = await resolveRealJid(message);
-    const userRec    = getUser(senderJid);
-    const whoName    = userRec ? `${userRec.nombre} (${userRec.cargo})` : senderJid;
-    const detailBlock =
-      `💬 *Feedback recibido (ID ${incidenciaId}):*\n\n` +
-      `✍️ *Tarea*: \n${inc.descripcion}\n\n` +
-      `🗣️ *${teamName} responde:* \n${message.body}`;
-=======
     // Obtenemos el JID y nombre del EMISOR original
     const reporterJid = inc.reportadoPor;
     const reporterRec = getUser(reporterJid);
@@ -205,18 +196,12 @@ async function handleTeamResponse(client, message) {
     const historyList = buildFeedbackHistoryList(history);
     const textoFeedback =
       `${message.body || '[Archivo adjunto]'}\n\n` +
-      `Tarea ID:${incidenciaId}\n\n` +
+      `*Tarea ID:${incidenciaId}* \n\n` +
       `📓 ${inc.descripcion} \n\n` +
       historyList;
->>>>>>> Stashed changes
-
     try {
       await chat.sendMessage(
-<<<<<<< Updated upstream
-        `✅ *Respuesta enviada al emisor ${whoName} para la tarea ${incidenciaId}*`
-=======
         `✅ *Respuesta enviada al emisor ${emitterName} para la tarea ID:${incidenciaId}*`
->>>>>>> Stashed changes
       );
     } catch (e) {
       console.error(`❌ Error al enviar confirmación de respuesta en grupo destino:`, e);
@@ -239,7 +224,7 @@ async function handleTeamResponse(client, message) {
       }
     }
 
-    console.log(`✅ Notificación enviada al grupo origen ${inc.grupoOrigen} por ${whoName}`);
+    console.log(`✅ Notificación enviada al grupo origen ${inc.grupoOrigen} por ${emitterName}`);
   } catch (err) {
     console.error('❌ Error al notificar feedback en grupo origen:', err);
   }

@@ -496,9 +496,9 @@ if (normalizedBody.startsWith('/generarreporte')) {
   }
 
 
-  // Comando: /tareas <categoria> (alias: /incidencias <categoria>)
+  // Comando: /tareas <categoria>
   if (normalizedBody.startsWith('/tareas')) {
-    const args = normalizedBody.split(/\s+/).slice(1); // quitar "/tareas"
+    const args = normalizedBody.split(/\s+/).slice(1);
 
     let startDate = null;
     let endDate = null;
@@ -514,19 +514,26 @@ if (normalizedBody.startsWith('/generarreporte')) {
     for (const arg of args) {
       if (arg === 'hoy') {
         startDate = `${today}T00:00:00`;
-        endDate   = `${today}T23:59:59`;
+        endDate = `${today}T23:59:59`;
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) {
         startDate = `${arg}T00:00:00`;
-        endDate   = `${arg}T23:59:59`;
+        endDate = `${arg}T23:59:59`;
       } else if (/^\d{4}-\d{2}-\d{2}:\d{4}-\d{2}-\d{2}$/.test(arg)) {
         const [start, end] = arg.split(':');
         startDate = `${start}T00:00:00`;
-        endDate   = `${end}T23:59:59`;
+        endDate = `${end}T23:59:59`;
       } else if (estadosValidos.includes(arg) && !estado) {
         estado = arg;
       } else if (categoriasValidas.includes(arg) && !categoria) {
         categoria = arg;
       }
+    }
+
+    // Si se piden pendientes, incluir también en pausa y en proceso
+    let isPendientesMode = false;
+    if (estado === 'pendiente') {
+      estado = ['pendiente', 'en pausa', 'en proceso'];
+      isPendientesMode = true;
     }
 
     const filtros = { startDate, endDate, estado, categoria };
@@ -538,21 +545,63 @@ if (normalizedBody.startsWith('/generarreporte')) {
       return true;
     }
 
-    const resumen = incidencias.map(inc => {
-      return `🔷 ID: *${inc.id}* | 📅 ${inc.fechaCreacion.slice(0,10)} | 📁 ${inc.categoria} | ` +
-            (inc.estado === 'pendiente'   ? '🟡 pendiente' :
-              inc.estado === 'en espera'   ? '🟡 en espera' :
-              inc.estado === 'en pausa'   ? '🟡 en pausa' :
-              inc.estado === 'completada'  ? '🛠 completada' :
-              inc.estado === 'cancelada'   ? '❌ cancelada' : inc.estado) +
-            `\n✏️ ${inc.descripcion}`;
-    }).join('\n\n');
+    const { MessageMedia } = require('whatsapp-web.js');
+    const chat = await message.getChat();
 
-    await message.reply(`📋 *Tareas encontradas: ${incidencias.length}*\n\n${resumen}`);
+    // 🔀 Modo mensajes individuales SOLO para pendientes/en pausa/en proceso
+    if (isPendientesMode) {
+      for (const inc of incidencias) {
+        const estadoIcon =
+          inc.estado === 'pendiente' ? '🟡 Pendiente' :
+          inc.estado === 'en pausa' ? '🟣 En pausa' :
+          inc.estado === 'en proceso' ? '🟠 En proceso' :
+          inc.estado === 'completada' ? '🛠 Completada' :
+          inc.estado === 'cancelada' ? '❌ Cancelada' : inc.estado;
+
+        const detalleMsg =
+          `📋 *Tarea ID:* ${inc.id}\n` +
+          `📁 *Categoría:* ${inc.categoria.toUpperCase()}\n` +
+          `🔷 *Estado:* ${estadoIcon}\n` +
+          `📅 *Fecha:* ${inc.fechaCreacion.slice(0, 10)}\n\n` +
+          `✏️ *Descripción:*\n${inc.descripcion}`;
+
+        // Manejo de medios
+        if (inc.media) {
+          try {
+            const parsed = JSON.parse(inc.media);
+            if (parsed?.data && parsed?.mimetype) {
+              const media = new MessageMedia(parsed.mimetype, parsed.data);
+              await chat.sendMessage(media, { caption: detalleMsg });
+              continue;
+            }
+          } catch {}
+        } else if (inc.mediaPath) {
+          const media = MessageMedia.fromFilePath(inc.mediaPath);
+          await chat.sendMessage(media, { caption: detalleMsg });
+          continue;
+        }
+
+        // Si no hay media
+        await chat.sendMessage(detalleMsg);
+      }
+    } 
+    // 📜 Modo listado normal para completadas/canceladas/otros
+    else {
+      const resumen = incidencias.map(inc => {
+        return `🔷 ID: *${inc.id}* | 📅 ${inc.fechaCreacion.slice(0,10)} | 📁 ${inc.categoria} | ` +
+          (inc.estado === 'pendiente' ? '🟡 pendiente' :
+          inc.estado === 'en pausa' ? '🟣 en pausa' :
+          inc.estado === 'en proceso' ? '🟠 en proceso' :
+          inc.estado === 'completada' ? '🛠 completada' :
+          inc.estado === 'cancelada' ? '❌ cancelada' : inc.estado) +
+          `\n✏️ ${inc.descripcion}`;
+      }).join('\n\n');
+
+      await message.reply(`📋 *Tareas encontradas: ${incidencias.length}*\n\n${resumen}`);
+    }
+
     return true;
   }
-
-
 
   // Comando: /cancelarTarea <id> (alias: /cancelarIncidencia <id>)
   if (normalizedBody.startsWith('/cancelartarea') || normalizedBody.startsWith('/cancelarincidencia')) {
@@ -632,80 +681,83 @@ if (normalizedBody.startsWith('/generarreporte')) {
       await chat.sendMessage("Formato inválido. Uso: /tareaDetalles <id>");
       return true;
     }
+
     const incId = parts[1].trim();
     incidenceDB.getIncidenciaById(incId, async (err, row) => {
       if (err) {
-        await chat.sendMessage("Error al consultar la incidencia.");
+        await chat.sendMessage("❌ Error al consultar la incidencia.");
       } else if (!row) {
-        await chat.sendMessage(`No se encontró ninguna incidencia con ID ${incId}.`);
+        await chat.sendMessage(`📭 No se encontró ninguna incidencia con ID ${incId}.`);
       } else {
-        // ---------------------------------------------------
-        // Construimos detailMessage con TODO el texto (sin enviar todavía)
-        // ---------------------------------------------------
-        let detailMessage = `*DETALLES DE LA INCIDENCIA (ID: ${row.id}):*\n\n\n`;
-        detailMessage += `🖼️ *Descripción:*\n ${row.descripcion}\n\n`;
+        const { MessageMedia } = require('whatsapp-web.js');
+        let detailMessage = `🆔 *DETALLES DE LA INCIDENCIA (ID: ${row.id})*\n\n`;
+
+        // 📝 Descripción
+        detailMessage += `✏️ *Tarea:* ${row.descripcion}\n\n`;
+
+        // 📌 Estado y categoría
+        detailMessage += `🔷 *Estado:* ${row.estado.toUpperCase()}\n`;
+        detailMessage += `👷‍♀️ *Categoría:* ${row.categoria.toUpperCase()}\n\n`;
+        
+        // 👤 Reportado por
         const user = getUser(row.reportadoPor);
         if (user) {
-          detailMessage += `🕵️ *Reportado por:*\n ${user.nombre} (${user.cargo}, rol: ${user.rol})\n\n`;
+          detailMessage += `🕵️ *Reportado por:* ${user.nombre} (${user.cargo})\n\n`;
         } else {
-          detailMessage += `🕵️ *Reportado por:*\n ${row.reportadoPor}\n\n`;
+          detailMessage += `🕵️ *Reportado por:* ${row.reportadoPor}\n\n`;
         }
-        detailMessage += `📅 *Fecha de Creación:*\n ${formatDate(row.fechaCreacion)}\n\n`;
-        detailMessage += `🔷 *Estado:*\n ${row.estado}\n\n`;
-        detailMessage += `👷‍♀️ *Categoría:*\n ${row.categoria}\n\n`;
-        detailMessage += `🆎 *Grupo de Origen:*\n ${row.grupoOrigen}\n\n`;
-        detailMessage += row.media
-          ? "🎞️ *Media:*\n [Adjunta]"
-          : "*Media:*\n No hay";
+        
+        // 🕒 Fecha de creación
+        detailMessage += `⏱️ *Fecha de Creación:* ${formatDate(row.fechaCreacion)}\n\n`;
 
-        // Si la incidencia tiene múltiples categorías, agregamos sección de comentarios
-        const categorias = row.categoria.split(',').map(c => c.trim().toLowerCase());
-        if (categorias.length > 1) {
-          let comentarios = "";
-          if (row.feedbackHistory) {
-            try {
-              const history = JSON.parse(row.feedbackHistory);
-              const teamNames = { it: "IT", man: "MANTENIMIENTO", ama: "AMA", rs: "ROOMSERVICE", seg: "SEGURIDAD" };
-              categorias.forEach(cat => {
-                const record = history
-                  .filter(r => r.equipo && r.equipo.toLowerCase() === cat)
-                  .pop();
-                const comentario = record && record.comentario ? record.comentario : "Sin comentarios";
-                comentarios += `${teamNames[cat] || cat.toUpperCase()}: ${comentario}\n`;
-              });
-            } catch (e) {
-              comentarios = "Sin comentarios";
+        // 📝 Comentarios
+        let comentarios = "Sin comentarios";
+        if (row.feedbackHistory) {
+          try {
+            const history = JSON.parse(row.feedbackHistory);
+            if (history.length > 0) {
+              comentarios = history.map(r => {
+                const u = getUser(r.usuario);
+                const nombre = u ? `${u.nombre} (${u.cargo})` : r.usuario;
+                return `• ${nombre}: ${r.comentario}`;
+              }).join('\n');
             }
-          } else {
+          } catch {
             comentarios = "Sin comentarios";
           }
-          detailMessage += `\n*Comentarios:*\n\n${comentarios}`;
         }
+        detailMessage += `💬 *Comentarios:*\n${comentarios}\n\n`;
 
-        // ---------------------------------------------------
-        // Ahora decidimos: si hay media → enviamos SOLO media con caption = detailMessage
-        //               si no hay media → enviamos SOLO detailMessage (texto)
-        // ---------------------------------------------------
+        // 📌 Fase / Equipo
+        detailMessage += `👥 *Equipo(s) Asignado(s):* ${row.categoria.toUpperCase()}\n\n`;
+
+        // ⏳ Timer
+        const created = new Date(row.fechaCreacion);
+        const now = new Date();
+        const diffMs = now - created;
+        const horas = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutos = Math.floor((diffMs / (1000 * 60)) % 60);
+        detailMessage += `⏳ *Tiempo transcurrido:* ${horas}h ${minutos}m\n`;
+
+        // 📎 Media
         if (row.media) {
-          const { MessageMedia } = require('whatsapp-web.js');
           let mimetype = 'image/png';
           let data = row.media;
           try {
-            // row.media pudo haberse guardado como JSON.stringify({ data, mimetype })
             const parsed = JSON.parse(row.media);
             if (parsed && parsed.data && parsed.mimetype) {
               data = parsed.data;
               mimetype = parsed.mimetype;
             }
-          } catch {
-            // Si el parse falla, asumimos que row.media ya es base64 con mimetype image/png
-          }
+          } catch {}
           const media = new MessageMedia(mimetype, data);
+          await chat.sendMessage(media, { caption: detailMessage });
+        } else if (row.mediaPath) {
+          const media = MessageMedia.fromFilePath(row.mediaPath);
           await chat.sendMessage(media, { caption: detailMessage });
         } else {
           await chat.sendMessage(detailMessage);
         }
-        // ---------------------------------------------------
       }
     });
     return true;

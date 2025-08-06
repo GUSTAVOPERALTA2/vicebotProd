@@ -27,7 +27,8 @@ function initDB() {
                 completadoPorJid    TEXT,
                 completadoPorNombre TEXT,
                 faseActual          TEXT,
-                ultimoRecordatorio TEXT
+                ultimoRecordatorio TEXT,
+                mediaPath TEXT
               )`);
     }
   });
@@ -74,8 +75,9 @@ function pauseIncidenciaAsync(incidenciaId) {
 
 function insertarIncidencia(incidencia, callback) {
   const sql = `INSERT INTO incidencias 
-    (uniqueMessageId, originalMsgId, descripcion, reportadoPor, fechaCreacion, estado, categoria, confirmaciones, feedbackHistory, grupoOrigen, media, fechaFinalizacion, completadoPorJid, completadoPorNombre) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    (uniqueMessageId, originalMsgId, descripcion, reportadoPor, fechaCreacion, estado, categoria, confirmaciones, feedbackHistory, grupoOrigen, media, mediaPath, fechaFinalizacion, completadoPorJid, completadoPorNombre) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
   db.run(sql, [
     incidencia.uniqueMessageId,
     incidencia.originalMsgId,
@@ -87,15 +89,15 @@ function insertarIncidencia(incidencia, callback) {
     incidencia.confirmaciones ? JSON.stringify(incidencia.confirmaciones) : null,
     JSON.stringify([]),
     incidencia.grupoOrigen,
-    incidencia.media,
-    null,
-    null,
-    null
+    incidencia.media,              // base64 para fotos
+    null,                          // fechaFinalizacion
+    null,                          // completadoPorJid
+    null,                          // completadoPorNombre
+    incidencia.mediaPath || null    // path para videos
   ], function(err) {
     callback(err, this.lastID);
   });
 }
-
 function insertarIncidenciaAsync(incidencia) {
   return new Promise((resolve, reject) => {
     insertarIncidencia(incidencia, (err, id) => {
@@ -175,18 +177,31 @@ async function filtrarIncidencias(filtros) {
     const condiciones = [];
     const params = [];
 
+    // Estado: manejar array o string
     if (filtros.estado) {
-      condiciones.push("estado = ?");
-      params.push(filtros.estado);
+      if (Array.isArray(filtros.estado)) {
+        const placeholders = filtros.estado.map(() => '?').join(',');
+        condiciones.push(`estado IN (${placeholders})`);
+        params.push(...filtros.estado);
+      } else {
+        condiciones.push("estado = ?");
+        params.push(filtros.estado);
+      }
     }
+
+    // Categoría
     if (filtros.categoria) {
       condiciones.push("categoria = ?");
       params.push(filtros.categoria);
     }
+
+    // Fecha inicio
     if (filtros.startDate) {
       condiciones.push("fechaCreacion >= ?");
       params.push(filtros.startDate);
     }
+
+    // Fecha fin
     if (filtros.endDate) {
       condiciones.push("fechaCreacion <= ?");
       params.push(filtros.endDate);

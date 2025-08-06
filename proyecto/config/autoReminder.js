@@ -2,10 +2,8 @@ const moment = require('moment-timezone');
 const config = require('./config');
 const incidenceDB = require('../modules/incidenceManager/incidenceDB');
 const { MessageMedia } = require('whatsapp-web.js');
+const { getUser } = require('./userManager');
 
-/**
- * calcularTiempoSinRespuesta - Calcula el tiempo transcurrido entre la fecha de creación y el momento actual.
- */
 function calcularTiempoSinRespuesta(fechaCreacion) {
   const ahora = moment();
   const inicio = moment(fechaCreacion);
@@ -16,9 +14,6 @@ function calcularTiempoSinRespuesta(fechaCreacion) {
   return `${dias} día(s), ${horas} hora(s), ${minutos} minuto(s)`;
 }
 
-/**
- * checkPendingIncidences - Revisa incidencias pendientes y envía recordatorios considerando "en pausa".
- */
 function checkPendingIncidences(client, initialRun = false) {
   const now = moment().tz("America/Hermosillo");
   const currentHour = now.hour();
@@ -57,19 +52,48 @@ function checkPendingIncidences(client, initialRun = false) {
         }
       }
 
-      // ⏸️ Si está en pausa, verificamos último recordatorio
+      // 📌 Calcular próximo recordatorio si está en pausa
+      let proximoRecordatorioTxt = '';
       if (row.estado === 'en pausa') {
         const lastReminder = row.ultimoRecordatorio ? moment(row.ultimoRecordatorio) : null;
-        if (lastReminder && now.diff(lastReminder, 'hours') < 24) {
-          console.log(`⏸️ Incidencia ${row.id} en pausa, recordatorio enviado hace menos de 24h.`);
-          return; // ❌ Saltar envío
-        }
+        const nextReminder = lastReminder
+          ? lastReminder.clone().add(24, 'hours')
+          : now.clone().add(24, 'hours');
 
-        // Actualizamos timestamp del último recordatorio
-        const sqlUpdate = `UPDATE incidencias SET ultimoRecordatorio = ? WHERE id = ?`;
-        db.run(sqlUpdate, [now.toISOString(), row.id], err => {
-          if (err) console.error("❌ Error actualizando último recordatorio:", err);
-        });
+        proximoRecordatorioTxt = `\n\n⏸️ *Próximo recordatorio:* ${nextReminder.format('DD/MM/YYYY HH:mm')}`;
+
+        // Actualizamos timestamp de último recordatorio solo si no se envió antes
+        if (!lastReminder || now.diff(lastReminder, 'hours') >= 24) {
+          const sqlUpdate = `UPDATE incidencias SET ultimoRecordatorio = ? WHERE id = ?`;
+          db.run(sqlUpdate, [now.toISOString(), row.id], err => {
+            if (err) console.error("❌ Error actualizando último recordatorio:", err);
+          });
+        } else {
+          console.log(`⏸️ Incidencia ${row.id} pausada, recordatorio enviado hace menos de 24h.`);
+          return; // No enviamos aún
+        }
+      }
+
+      // Últimos 5 comentarios
+      let comentariosTxt = '';
+      if (row.feedbackHistory) {
+        try {
+          const history = JSON.parse(row.feedbackHistory);
+          const ultimos = history
+            .filter(h => h.tipo === 'feedbackrespuesta')
+            .slice(-5);
+
+          if (ultimos.length > 0) {
+            comentariosTxt = '\n\n💬 *Últimos comentarios:*\n';
+            ultimos.forEach(c => {
+              const usr = getUser(c.usuario);
+              const userLabel = usr ? `${usr.nombre} (${usr.cargo})` : c.usuario;
+              comentariosTxt += `• ${userLabel}: ${c.comentario}\n`;
+            });
+          }
+        } catch (err) {
+          console.error("Error al parsear feedbackHistory:", err);
+        }
       }
 
       const categorias = row.categoria.split(',').map(c => c.trim().toLowerCase());
@@ -80,26 +104,43 @@ function checkPendingIncidences(client, initialRun = false) {
           return;
         }
         if (confirmaciones[categoria]) {
-          console.log(`La incidencia ${row.id} ya tiene confirmación para la categoría ${categoria}. No se enviará recordatorio a este equipo.`);
+          console.log(`La incidencia ${row.id} ya tiene confirmación para la categoría ${categoria}.`);
           return;
         }
 
         const tiempoSinRespuesta = calcularTiempoSinRespuesta(row.fechaCreacion);
         const msg =
           `*RECORDATORIO*\n\n` +
-          `${row.descripcion}\n\n` +
+          `${row.descripcion}\n\n\n` +
           `*Si la tarea ya se terminó, marca "Listo".*\n\n` +
-          `Tiempo sin respuesta: ${tiempoSinRespuesta}\n` +
-          `ID: ${row.id}`;
+          `⏱️ Tiempo sin respuesta: ${tiempoSinRespuesta}\n\n` +
+          `ID: ${row.id}` +
+          comentariosTxt +
+          proximoRecordatorioTxt;
 
-        console.log(`Enviando recordatorio para incidencia ${row.id} a grupo ${groupId} (categoría ${categoria})`);
+        console.log(`Enviando recordatorio para incidencia ${row.id} a grupo ${groupId} (${categoria})`);
 
         client.getChatById(groupId)
           .then(async chat => {
             try {
-              const mediaPath = row.mediaPath || row.media;
-              if (mediaPath) {
-                const media = MessageMedia.fromFilePath(mediaPath);
+              const mediaField = row.mediaPath || row.media;
+              if (mediaField) {
+                let media;
+                try {
+                  const parsed = JSON.parse(mediaField); // cuando está guardado como JSON
+                  let base64Data = parsed.data;
+
+                  // 🔹 Limpiar prefijo si existe
+                  const base64Match = base64Data.match(/^data:.*;base64,(.*)$/);
+                  if (base64Match) {
+                    base64Data = base64Match[1];
+                  }
+
+                  media = new MessageMedia(parsed.mimetype, base64Data, parsed.filename || undefined);
+                } catch {
+                  // si falla el parse, asumimos ruta física
+                  media = MessageMedia.fromFilePath(mediaField);
+                }
                 await chat.sendMessage(media, { caption: msg });
               } else {
                 await chat.sendMessage(msg);
@@ -117,14 +158,11 @@ function checkPendingIncidences(client, initialRun = false) {
   });
 }
 
-/**
- * startReminder - Inicia verificación inmediata y periódica de incidencias pendientes.
- */
 function startReminder(client) {
   checkPendingIncidences(client, true);
   setInterval(() => {
     checkPendingIncidences(client, false);
-  }, 3600000); // 1 hora
+  }, 3600000);
 }
 
 module.exports = { startReminder };

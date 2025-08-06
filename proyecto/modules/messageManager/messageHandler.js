@@ -37,7 +37,18 @@ function detectConfirm(client, tokens, text) {
 }
 
 async function handlePause(client, chat, message, incidenciaId) {
-  incidenceDB.updateIncidenciaStatus(incidenciaId, 'en pausa', async err => {
+  const now = new Date();
+  const nextReminder = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 horas
+
+  // Actualizamos estado y timestamp de último recordatorio
+  const sqlUpdate = `
+    UPDATE incidencias
+    SET estado = ?, ultimoRecordatorio = ?
+    WHERE id = ?
+  `;
+  
+  const db = incidenceDB.getDB();
+  db.run(sqlUpdate, ['en pausa', now.toISOString(), incidenciaId], async err => {
     if (err) {
       console.error('❌ Error pausando incidencia:', err);
       await safeReplyOrSend(chat, message, `❌ No se pudo pausar la incidencia ID ${incidenciaId}.`);
@@ -45,7 +56,13 @@ async function handlePause(client, chat, message, incidenciaId) {
       const senderJid = await resolveRealJid(message);
       const user = getUser(senderJid);
       const who = user ? `${user.nombre} (${user.cargo})` : senderJid;
-      await safeReplyOrSend(chat, message, `🤖⏸️ La incidencia ID: ${incidenciaId} ha sido pausada por ${who}`);
+
+      await safeReplyOrSend(
+        chat,
+        message,
+        `🤖⏸️ La incidencia ID: ${incidenciaId} ha sido pausada por ${who}\n\n` +
+        `⏱️ *Próximo recordatorio:* ${nextReminder.toLocaleString('es-MX', { hour12: true })}`
+      );
     }
   });
 }

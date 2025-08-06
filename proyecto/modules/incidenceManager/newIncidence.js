@@ -8,7 +8,8 @@ const { normalizeText, similarity, adaptiveSimilarityCheck } = require('../../co
 const { getUser, loadUsers } = require('../../config/userManager');
 const { safeReplyOrSend } = require('../../utils/messageUtils');
 const { resolveRealJid } = require('../../utils/jidUtils');
-
+const fs = require('fs');
+const path = require('path');
 
 function formatTeamsList(list) {
   if (list.length === 1) return list[0];
@@ -125,17 +126,30 @@ async function processNewIncidence(client, message) {
     foundCategories.forEach(cat => confirmaciones[cat] = false);
   }
   let mediaData = null;
+  let mediaPath = null;
+
   if (message.hasMedia) {
     try {
       const media = await message.downloadMedia();
+
       if (media && media.data && media.mimetype) {
-        mediaData = { data: media.data, mimetype: media.mimetype };
+        if (media.mimetype.startsWith('video/')) {
+          // Guardamos videos en carpeta de data
+          const ext = media.mimetype.split('/')[1];
+          const filename = `incidencia_${Date.now()}.${ext}`;
+          const filepath = path.join(__dirname, '../../data/media', filename);
+
+          fs.writeFileSync(filepath, media.data, 'base64');
+          mediaPath = filepath; // 🔹 Guardamos solo ruta para videos
+        } else {
+          // Fotos se guardan directo en la BD
+          mediaData = { data: media.data, mimetype: media.mimetype };
+        }
       }
     } catch (err) {
       console.error("Error al descargar la media:", err);
     }
   }
-
   const uniqueMessageId = uuidv4();
   const originalMsgId = message.id._serialized;
   const nuevaIncidencia = {
@@ -148,7 +162,8 @@ async function processNewIncidence(client, message) {
     categoria: foundCategories.join(', '),
     confirmaciones,
     grupoOrigen: chatId,
-    media: mediaData ? JSON.stringify(mediaData) : null
+    media: mediaData ? JSON.stringify(mediaData) : null, // fotos
+    mediaPath: mediaPath // videos
   };
 
   incidenceDB.insertarIncidencia(nuevaIncidencia, async (err, lastID) => {
@@ -157,22 +172,29 @@ async function processNewIncidence(client, message) {
       return;
     }
     console.log("Incidencia registrada con ID:", lastID);
+    const reporterRec = getUser(nuevaIncidencia.reportadoPor);
+    const emitterName = reporterRec
+      ? `${reporterRec.nombre} (${reporterRec.cargo})`
+      : nuevaIncidencia.reportadoPor;
 
     async function forwardMessage(targetId, label) {
       try {
         const targetChat = await client.getChatById(targetId);
-<<<<<<< Updated upstream
-        const caption = `*Nueva tarea recibida (ID: ${lastID}):*\n\n✅ *${message.body}*`;
-=======
         const caption = 
           `*Nueva tarea recibida (ID: ${lastID}):*\n\n` +
           `*${message.body}* \n\n` +
           `*Reportada por:* ${emitterName}\n`;
->>>>>>> Stashed changes
-        if (mediaData) {
+
+        if (mediaPath) {
+          // 🔹 Enviar video desde archivo
+          const mediaMsg = MessageMedia.fromFilePath(mediaPath);
+          await targetChat.sendMessage(mediaMsg, { caption });
+        } else if (mediaData) {
+          // 🔹 Enviar foto desde base64
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });
         } else {
+          // 🔹 Solo texto
           await targetChat.sendMessage(caption);
         }
       } catch (e) {
