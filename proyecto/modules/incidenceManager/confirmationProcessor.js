@@ -147,8 +147,11 @@ async function processConfirmation(client, message) {
             const groupId = config.destinoGrupos[team];
             if (!groupId) continue;
             try {
+              const completedJid   = await resolveRealJid(message);
+              const userRec        = getUser(completedJid);
+              const completedName  = userRec ? userRec.nombre : completedJid;
               const teamChat = await client.getChatById(groupId);
-              await teamChat.sendMessage(`✅ *La incidencia ID ${inc.id} ha sido completada por:* ${inc.completadoPorNombre}`);
+              await teamChat.sendMessage(`✅ *La incidencia ID ${inc.id} ha sido completada por:* ${completedName}`);
             } catch (e) {
               console.warn(`⚠️ No se pudo notificar al grupo de ${team}:`, e);
             }

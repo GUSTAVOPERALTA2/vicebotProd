@@ -186,7 +186,8 @@ async function processNewIncidence(client, message) {
         const caption = 
           `*Nueva tarea recibida (ID: ${lastID}):*\n\n` +
           `*${message.body}* \n\n` +
-          `*Reportada por:* ${emitterName}\n`;
+          `*Reportada por:* ${emitterName}\n` +
+          `*SI NO TE CORRESPONDE, MARCA LISTO*\n`;
 
         if (mediaPath) {
           // Enviar video desde ruta absoluta
