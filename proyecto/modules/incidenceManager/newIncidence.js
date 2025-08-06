@@ -10,6 +10,8 @@ const { safeReplyOrSend } = require('../../utils/messageUtils');
 const { resolveRealJid } = require('../../utils/jidUtils');
 const fs = require('fs');
 const path = require('path');
+// Directorio donde se guardan los videos
+const VIDEO_DIR = path.join(__dirname, '../../data/media');
 
 function formatTeamsList(list) {
   if (list.length === 1) return list[0];
@@ -131,26 +133,24 @@ async function processNewIncidence(client, message) {
   if (message.hasMedia) {
     try {
       const media = await message.downloadMedia();
-
       if (media && media.data && media.mimetype) {
         if (media.mimetype.startsWith('video/')) {
+          // Guardar video en disco
           const ext = media.mimetype.split('/')[1];
           const filename = `incidencia_${Date.now()}.${ext}`;
-          const mediaDir = path.join(__dirname, '../../data/media');
-          // Crear carpeta si no existe
-          fs.mkdirSync(mediaDir, { recursive: true });
-          const filepath = path.join(mediaDir, filename);
+          fs.mkdirSync(VIDEO_DIR, { recursive: true });
+          const filepath = path.join(VIDEO_DIR, filename);
           fs.writeFileSync(filepath, media.data, 'base64');
-          mediaPath = filename;  // 🔹 Guardamos sólo el nombre de archivo
-          
-          
+          mediaPath = filepath;
+          console.log('📹 Video guardado en:', filepath);
         } else {
-          // Fotos se guardan directo en la BD
+          // Fotos guardadas en BD
           mediaData = { data: media.data, mimetype: media.mimetype };
+          console.log('🖼️ Foto preparada para BD');
         }
       }
     } catch (err) {
-      console.error("Error al descargar la media:", err);
+      console.error('❌ Error al descargar la media:', err);
     }
   }
   const uniqueMessageId = uuidv4();
@@ -163,7 +163,7 @@ async function processNewIncidence(client, message) {
     fechaCreacion: new Date().toISOString(),
     estado: 'pendiente',
     categoria: foundCategories.join(', '),
-    confirmaciones,
+    confirmaciones: foundCategories.length > 1 ? Object.fromEntries(foundCategories.map(c=>[c,false])) : null,
     grupoOrigen: chatId,
     media: mediaData ? JSON.stringify(mediaData) : null, // fotos
     mediaPath: mediaPath // videos
@@ -189,11 +189,15 @@ async function processNewIncidence(client, message) {
           `*Reportada por:* ${emitterName}\n`;
 
         if (mediaPath) {
-          // 🔹 Enviar video desde archivo
-          const mediaMsg = MessageMedia.fromFilePath(mediaPath);
+          // Enviar video desde ruta absoluta
+          let videoFile = mediaPath;
+          if (!path.isAbsolute(videoFile)) videoFile = path.join(VIDEO_DIR, videoFile);
+          console.log('📹 Reenviando video desde:', videoFile);
+          const mediaMsg = MessageMedia.fromFilePath(videoFile);
           await targetChat.sendMessage(mediaMsg, { caption });
         } else if (mediaData) {
           // 🔹 Enviar foto desde base64
+          console.log('🖼️ Reenviando foto desde base64');
           const mediaMsg = new MessageMedia(mediaData.mimetype, mediaData.data);
           await targetChat.sendMessage(mediaMsg, { caption });
         } else {

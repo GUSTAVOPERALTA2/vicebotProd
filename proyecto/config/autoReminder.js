@@ -131,16 +131,14 @@ function checkPendingIncidences(client, initialRun = false) {
 
               // 1) VIDEO
               if (row.mediaPath) {
-                const mediaDir = path.join(__dirname, '../data/media');
-                const filePath = path.join(mediaDir, row.mediaPath);
-                console.log(`📹 mediaPath de incidencia ${row.id}:`, filePath);
-                const exists = fs.existsSync(filePath);
+                console.log(`📹 mediaPath de incidencia ${row.id}:`, row.mediaPath);
+                const exists = fs.existsSync(row.mediaPath);
                 console.log(`🗂️ Verificación existencia archivo: ${exists}`);
                 if (exists) {
                   try {
-                    const stat = fs.statSync(filePath);
+                    const stat = fs.statSync(row.mediaPath);
                     console.log(`📏 Tamaño del archivo: ${stat.size} bytes`);
-                    media = MessageMedia.fromFilePath(filePath);
+                    media = MessageMedia.fromFilePath(row.mediaPath);
                     console.log('✅ MessageMedia (video) generado:', {
                       mimetype: media.mimetype,
                       filename: media.filename,
@@ -150,7 +148,7 @@ function checkPendingIncidences(client, initialRun = false) {
                     console.error(`❌ Error cargando video desde ruta:`, e);
                   }
                 } else {
-                  console.warn(`❗ Archivo de video no encontrado: ${filePath}`);
+                  console.warn(`❗ Archivo de video no encontrado: ${row.mediaPath}`);
                 }
               }
               // 2) FOTO
