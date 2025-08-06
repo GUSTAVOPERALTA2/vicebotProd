@@ -123,28 +123,36 @@ function checkPendingIncidences(client, initialRun = false) {
         client.getChatById(groupId)
           .then(async chat => {
             try {
-              const mediaField = row.mediaPath || row.media;
-              if (mediaField) {
-                let media;
+              let media = null;
+              
+              if (row.mediaPath) {
+                // 🎥 Video
                 try {
-                  const parsed = JSON.parse(mediaField); // cuando está guardado como JSON
-                  let base64Data = parsed.data;
-
-                  // 🔹 Limpiar prefijo si existe
-                  const base64Match = base64Data.match(/^data:.*;base64,(.*)$/);
-                  if (base64Match) {
-                    base64Data = base64Match[1];
-                  }
-
-                  media = new MessageMedia(parsed.mimetype, base64Data, parsed.filename || undefined);
-                } catch {
-                  // si falla el parse, asumimos ruta física
-                  media = MessageMedia.fromFilePath(mediaField);
+                  media = MessageMedia.fromFilePath(row.mediaPath);
+                } catch (e) {
+                  console.error("❌ Error cargando video desde ruta:", e);
                 }
+              } else if (row.media) {
+                // 🖼️ Imagen
+                try {
+                  const parsed = JSON.parse(row.media);
+                  if (parsed?.data && parsed?.mimetype) {
+                    let base64Data = parsed.data;
+                    const match = base64Data.match(/^data:.*;base64,(.*)$/);
+                    if (match) base64Data = match[1];
+                    media = new MessageMedia(parsed.mimetype, base64Data);
+                  }
+                } catch (e) {
+                  console.error("❌ Error procesando imagen base64:", e);
+                }
+              }
+
+              if (media) {
                 await chat.sendMessage(media, { caption: msg });
               } else {
                 await chat.sendMessage(msg);
               }
+
               console.log(`Recordatorio enviado para incidencia ${row.id} a grupo ${groupId}.`);
             } catch (e) {
               console.error(`❌ Error al enviar recordatorio para grupo ${groupId}:`, e);
