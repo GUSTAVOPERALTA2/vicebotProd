@@ -63,7 +63,6 @@ function checkPendingIncidences(client, initialRun = false) {
         const nextReminder = lastReminder
           ? lastReminder.clone().add(24, 'hours')
           : now.clone().add(24, 'hours');
-
         proximoRecordatorioTxt = `\n\n⏸️ *Próximo recordatorio:* ${nextReminder.format('DD/MM/YYYY HH:mm')}`;
 
         if (!lastReminder || now.diff(lastReminder, 'hours') >= 24) {
@@ -88,7 +87,6 @@ function checkPendingIncidences(client, initialRun = false) {
           const ultimos = history
             .filter(h => h.tipo === 'feedbackrespuesta')
             .slice(-5);
-
           if (ultimos.length > 0) {
             comentariosTxt = '\n\n💬 *Últimos comentarios:*\n';
             ultimos.forEach(c => {
@@ -103,7 +101,6 @@ function checkPendingIncidences(client, initialRun = false) {
       }
 
       const categorias = row.categoria.split(',').map(c => c.trim().toLowerCase());
-
       categorias.forEach(categoria => {
         const groupId = config.destinoGrupos[categoria];
         if (!groupId) {
@@ -132,26 +129,31 @@ function checkPendingIncidences(client, initialRun = false) {
             try {
               let media = null;
 
-              // VIDEO
+              // 1) VIDEO
               if (row.mediaPath) {
-                console.log(`📹 mediaPath detectado: ${row.mediaPath}`);
+                console.log(`📹 mediaPath de incidencia ${row.id}:`, row.mediaPath);
                 const exists = fs.existsSync(row.mediaPath);
                 console.log(`🗂️ Verificación existencia archivo: ${exists}`);
                 if (exists) {
                   try {
+                    const stat = fs.statSync(row.mediaPath);
+                    console.log(`📏 Tamaño del archivo: ${stat.size} bytes`);
                     media = MessageMedia.fromFilePath(row.mediaPath);
-                    console.log(`✅ Video cargado desde ruta`);
+                    console.log('✅ MessageMedia (video) generado:', {
+                      mimetype: media.mimetype,
+                      filename: media.filename,
+                      dataLength: media.data.length
+                    });
                   } catch (e) {
-                    console.error(`❌ Error cargando mediaPath:`, e);
+                    console.error(`❌ Error cargando video desde ruta:`, e);
                   }
                 } else {
                   console.warn(`❗ Archivo de video no encontrado: ${row.mediaPath}`);
                 }
               }
-
-              // FOTO
+              // 2) FOTO
               else if (row.media) {
-                console.log(`🖼️ media base64 detectada`);
+                console.log(`🖼️ media base64 detectada para incidencia ${row.id}`);
                 try {
                   const parsed = JSON.parse(row.media);
                   if (parsed?.data && parsed?.mimetype) {
@@ -159,7 +161,10 @@ function checkPendingIncidences(client, initialRun = false) {
                     const match = base64Data.match(/^data:.*;base64,(.*)$/);
                     if (match) base64Data = match[1];
                     media = new MessageMedia(parsed.mimetype, base64Data);
-                    console.log(`✅ Imagen base64 cargada`);
+                    console.log('✅ MessageMedia (imagen) generado:', {
+                      mimetype: media.mimetype,
+                      dataLength: media.data.length
+                    });
                   } else {
                     console.warn(`⚠️ Formato de imagen base64 inválido`);
                   }
@@ -168,8 +173,13 @@ function checkPendingIncidences(client, initialRun = false) {
                 }
               }
 
+              // 3) Envío
               if (media) {
-                await chat.sendMessage(media, { caption: msg });
+                await chat.sendMessage(media, {
+                  caption: msg,
+                  sendMediaAsDocument: false,
+                  sendMediaAsSticker: false
+                });
               } else {
                 console.log("📄 Enviando solo mensaje de texto.");
                 await chat.sendMessage(msg);
