@@ -131,14 +131,20 @@ function checkPendingIncidences(client, initialRun = false) {
 
               // 1) VIDEO
               if (row.mediaPath) {
-                console.log(`📹 mediaPath de incidencia ${row.id}:`, row.mediaPath);
-                const exists = fs.existsSync(row.mediaPath);
+                console.log(`📹 mediaPath crudo de incidencia ${row.id}:`, row.mediaPath);
+                // Si no es absoluta, la prefijamos con el directorio real
+                let videoPath = row.mediaPath;
+                if (!path.isAbsolute(videoPath)) {
+                  videoPath = path.join(__dirname, '../../data/media', videoPath);
+                  console.log(`📂 mediaPath convertida a absoluta: ${videoPath}`);
+                }
+                const exists = fs.existsSync(videoPath);
                 console.log(`🗂️ Verificación existencia archivo: ${exists}`);
                 if (exists) {
                   try {
-                    const stat = fs.statSync(row.mediaPath);
+                    const stat = fs.statSync(videoPath);
                     console.log(`📏 Tamaño del archivo: ${stat.size} bytes`);
-                    media = MessageMedia.fromFilePath(row.mediaPath);
+                    media = MessageMedia.fromFilePath(videoPath);
                     console.log('✅ MessageMedia (video) generado:', {
                       mimetype: media.mimetype,
                       filename: media.filename,
@@ -148,7 +154,7 @@ function checkPendingIncidences(client, initialRun = false) {
                     console.error(`❌ Error cargando video desde ruta:`, e);
                   }
                 } else {
-                  console.warn(`❗ Archivo de video no encontrado: ${row.mediaPath}`);
+                  console.warn(`❗ Archivo de video no encontrado en ninguna ruta: ${videoPath}`);
                 }
               }
               // 2) FOTO
